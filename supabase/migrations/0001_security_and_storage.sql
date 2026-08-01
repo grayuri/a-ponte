@@ -127,6 +127,13 @@ create index if not exists institutions_name_trgm_idx
 create index if not exists stores_name_trgm_idx
   on public.stores using gin (name gin_trgm_ops);
 
--- O relatório mensal filtra sempre por faixa de data + agrupa por loja/tipo.
-create index if not exists harvests_month_idx
-  on public.harvests (date_trunc('month', harvested_on), store_id);
+-- Nota: aqui existia um índice sobre date_trunc('month', harvested_on).
+-- Ele não compila — date_trunc sobre `date` resolve para a versão timestamptz,
+-- que é STABLE (o resultado depende do TimeZone da sessão) e o Postgres não
+-- indexa expressão não-IMMUTABLE.
+--
+-- E, mais importante, ele era redundante: o Prisma já cria
+-- harvests(store_id, harvested_on) e harvests(harvested_on), que atendem
+-- todas as consultas do módulo de relatórios. A evolução mensal foi reescrita
+-- para filtrar por faixa de data em vez de extract(year from ...), justamente
+-- para usar esses índices. Índice a menos, uma coisa a menos para manter.

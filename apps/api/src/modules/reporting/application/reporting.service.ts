@@ -86,6 +86,13 @@ export class ReportingService {
 
   /** Evolução mensal do ano — a tabela do meio do PAINEL. */
   async monthlyEvolution(year: number): Promise<MonthlyPointView[]> {
+    // Faixa de datas em vez de `extract(year from harvested_on) = $1`:
+    // aplicar função na coluna torna o predicado não-sargável e obriga a
+    // varredura completa da tabela. Assim o índice harvests(harvested_on)
+    // é usado de verdade.
+    const inicio = DateOnly.parse(`${year}-01-01`).toUtcDate();
+    const fim = DateOnly.parse(`${year + 1}-01-01`).toUtcDate();
+
     const rows = await this.prisma.$queryRaw<
       Array<{ month: number; count: bigint; weight: Prisma.Decimal | null }>
     >`
@@ -94,7 +101,8 @@ export class ReportingService {
         count(*)::bigint                      as count,
         sum(weight_kg)                        as weight
       from harvests
-      where extract(year from harvested_on) = ${year}
+      where harvested_on >= ${inicio}::date
+        and harvested_on <  ${fim}::date
       group by 1
       order by 1
     `;
