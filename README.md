@@ -103,11 +103,13 @@ npm run build --workspace @a-ponte/contracts
 
 ### 2. Configurar o ambiente
 
-Copie `.env.example` para `apps/api/.env` e `apps/web/.env.local`, preenchendo:
+Copie `.env.example` para `apps/api/.env` e `apps/web/.env.local`, preenchendo. Copie
+mesmo — não edite o `.env.example` com valores reais: ele é rastreado pelo git, e este
+repositório é público.
 
 | Variável | Onde achar |
 |---|---|
-| `DATABASE_URL` | Supabase → Project Settings → Database → Connection string |
+| `DATABASE_URL` | Project Settings → Database → Connection string → **Session pooler** |
 | `SUPABASE_URL` | Project Settings → API → Project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Project Settings → API → `service_role` (**nunca** no frontend) |
 | `SUPABASE_JWT_SECRET` | Project Settings → API → JWT Settings (opcional em projetos novos) |
@@ -123,6 +125,12 @@ npm run db:migrate --workspace @a-ponte/api   # cria o schema
 Depois, rode `supabase/migrations/0001_security_and_storage.sql` no SQL Editor do
 Supabase. Ele liga RLS em tudo, cria os triggers de ciclo de vida da conta e o bucket
 privado de fotos.
+
+> **Se der `P1001: Can't reach database server`**, você está usando a string de conexão
+> direta (`db.SEUPROJETO.supabase.co`). Ela é IPv6-only desde 2024 e não funciona na
+> maioria das redes brasileiras — o erro parece problema de senha, mas é de rota. Troque
+> pelo **Session pooler** no painel do Supabase. Confirme com
+> `Resolve-DnsName db.SEUPROJETO.supabase.co`: se só aparecer registro `AAAA`, é isso.
 
 ### 4. Semear e criar o primeiro administrador
 
