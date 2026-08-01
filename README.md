@@ -134,6 +134,20 @@ privado de fotos.
 
 ### 4. Semear e criar o primeiro administrador
 
+No **PowerShell** (Windows) — o prefixo `VAR=valor comando` é sintaxe de shell Unix e não
+existe aqui:
+
+```powershell
+cd apps/api
+$env:ADMIN_EMAIL = 'voce@exemplo.com'
+$env:ADMIN_PASSWORD = 'umaSenhaBoa'
+$env:ADMIN_USERNAME = 'admin'
+$env:ADMIN_NAME = 'Seu Nome'
+npm run db:seed
+```
+
+No **bash** (Linux/macOS):
+
 ```bash
 cd apps/api
 ADMIN_EMAIL=voce@exemplo.com ADMIN_PASSWORD=umaSenhaBoa ADMIN_USERNAME=admin npm run db:seed
@@ -143,12 +157,17 @@ ADMIN_EMAIL=voce@exemplo.com ADMIN_PASSWORD=umaSenhaBoa ADMIN_USERNAME=admin npm
 
 ```bash
 cd apps/api
-npm run import:legacy -- "../../Contexts/RELATORIO COLHEITAS 2026 v5.xlsx" --all
+npx ts-node -T src/modules/legacy-import/import-legacy.cli.ts "../../Contexts/RELATORIO COLHEITAS 2026 v5.xlsx" --all
 ```
 
 - `(sem flag)` importa só o histórico de colheitas
 - `--schedule` importa só a aba ESCALA
 - `--all` importa os dois
+
+> Chame o `ts-node` direto, e não `npm run import:legacy -- ... --all`: o npm tem uma
+> flag própria chamada `--all` e a consome antes de repassar, então a aba ESCALA não
+> seria importada — sem erro nenhum, só silêncio. Para o modo padrão e o `--schedule`,
+> o `npm run import:legacy -- "arquivo.xlsx"` funciona normalmente.
 
 É seguro rodar de novo: cada linha vira um `externalRef` único, e a segunda execução
 conta as repetidas em vez de duplicar.
