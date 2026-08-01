@@ -1,0 +1,419 @@
+// =============================================================================
+// REDE COLHEITA — modelo de dados
+//
+// Substitui as 9 abas da planilha "RELATORIO COLHEITAS 2026":
+//   RESPOSTA FORMULÁRIOS  -> harvests
+//   DADOS (ETL em fórmula) -> deixa de existir: normalização é do domínio
+//   ESCALA                -> schedule_commitments + schedule_occurrences
+//   ALERTA PREENCHIMENTO  -> occurrence.status, calculado pelo motor de pendência
+//   PAINEL/RESUMOS/CALEND -> consultas do módulo reporting
+//   DE-PARA NOMES/DE_PARA -> não existem mais: identidade vem do login e do catálogo
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -----------------------------------------------------------------------------
+// Identity
+// -----------------------------------------------------------------------------
+
+enum UserRole {
+  ADMIN
+  COORDENADOR
+  INSTITUICAO
+  COLHEDOR
+}
+
+enum UserStatus {
+  ATIVO
+  INATIVO
+  CONVIDADO
+}
+
+/// Espelho local de auth.users do Supabase. O id é o mesmo uuid da conta
+/// Supabase — o backend nunca cria identidade por conta própria.
+model User {
+  id       String     @id @db.Uuid
+  fullName String     @map("full_name")
+  username String     @unique
+  email    String     @unique
+  phone    String?
+  role     UserRole   @default(COLHEDOR)
+  status   UserStatus @default(ATIVO)
+
+  institutionId String?      @map("institution_id") @db.Uuid
+  institution   Institution? @relation(fields: [institutionId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  harvestsCollected    Harvest[]            @relation("HarvestCollector")
+  harvestsRegistered   Harvest[]            @relation("HarvestRegisteredBy")
+  commitments          ScheduleCommitment[]
+  occurrences          ScheduleOccurrence[] @relation("OccurrenceAssignee")
+  coveredOccurrences   ScheduleOccurrence[] @relation("OccurrenceCoveringUser")
+  notifications        Notification[]
+  auditEntries         AuditLog[]
+
+  @@index([institutionId])
+  @@index([role, status])
+  @@map("users")
+}
+
+// -----------------------------------------------------------------------------
+// Catalog — a fonte única de verdade que aposenta os DE-PARA da planilha
+// -----------------------------------------------------------------------------
+
+/// Rede varejista ou fornecedor (São Luiz, Hortfelix, Frutas Lessa, Nossa Fruta).
+model RetailChain {
+  id    String  @id @default(uuid()) @db.Uuid
+  name  String  @unique
+  notes String?
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  stores Store[]
+
+  @@map("retail_chains")
+}
+
+/// Uma unidade concreta de coleta. `shiftLabel` existe porque a planilha
+/// tratava "EUSEBIO TARDE" e "EUSEBIO NOITE" como lojas diferentes na escala,
+/// mas as colapsava em "EUSÉBIO" no formulário — e a conferência de um dos
+/// turnos ficava silenciosamente errada.
+model Store {
+  id         String  @id @default(uuid()) @db.Uuid
+  chainId    String  @map("chain_id") @db.Uuid
+  name       String
+  shiftLabel String? @map("shift_label")
+  city       String?
+  address    String?
+  active     Boolean @default(true)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  chain       RetailChain          @relation(fields: [chainId], references: [id], onDelete: Restrict)
+  commitments ScheduleCommitment[]
+  occurrences ScheduleOccurrence[]
+  harvests    Harvest[]
+
+  @@unique([chainId, name, shiftLabel])
+  @@index([active])
+  @@map("stores")
+}
+
+/// Instituição de caridade que colhe e recebe o alimento.
+model Institution {
+  id          String  @id @default(uuid()) @db.Uuid
+  name        String  @unique
+  shortName   String? @map("short_name")
+  contactName String? @map("contact_name")
+  phone       String?
+  city        String?
+  address     String?
+  active      Boolean @default(true)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  members             User[]
+  commitments         ScheduleCommitment[]
+  occurrences         ScheduleOccurrence[]  @relation("OccurrenceInstitution")
+  coveredOccurrences  ScheduleOccurrence[]  @relation("OccurrenceCoveringInstitution")
+  harvests            Harvest[]
+
+  @@index([active])
+  @@map("institutions")
+}
+
+/// Self Service (pães/prontos), Hortifruti, Polpas. Tabela em vez de enum
+/// porque a operação inventa categoria nova sem avisar o desenvolvedor.
+model HarvestType {
+  id     String  @id @default(uuid()) @db.Uuid
+  code   String  @unique
+  label  String
+  active Boolean @default(true)
+  order  Int     @default(0)
+
+  commitments ScheduleCommitment[]
+  harvests    Harvest[]
+
+  @@map("harvest_types")
+}
+
+// -----------------------------------------------------------------------------
+// Scheduling — a aba ESCALA, com o tempo modelado de verdade
+// -----------------------------------------------------------------------------
+
+enum CommitmentStatus {
+  ATIVO
+  SUSPENSO
+  ENCERRADO
+}
+
+/// A regra recorrente: "toda terça, 15h30, São Luiz Abolição, Casa de Gade".
+model ScheduleCommitment {
+  id             String  @id @default(uuid()) @db.Uuid
+  storeId        String  @map("store_id") @db.Uuid
+  institutionId  String  @map("institution_id") @db.Uuid
+  assigneeUserId String? @map("assignee_user_id") @db.Uuid
+  harvestTypeId  String? @map("harvest_type_id") @db.Uuid
+
+  /// 0 = domingo ... 6 = sábado
+  weekday   Int
+  startTime String  @map("start_time") @db.VarChar(5)
+  /// Texto exato da planilha quando o horário não é um relógio ("16h / 21:45h").
+  timeLabel String? @map("time_label")
+
+  status     CommitmentStatus @default(ATIVO)
+  /// Guarda avisos que a planilha punha no lugar do nome do responsável,
+  /// como "FECHADO POR 3 MESES PARA REFORMA".
+  statusNote String?          @map("status_note")
+
+  validFrom DateTime? @map("valid_from") @db.Date
+  validTo   DateTime? @map("valid_to") @db.Date
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  store       Store                @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  institution Institution          @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  assignee    User?                @relation(fields: [assigneeUserId], references: [id], onDelete: SetNull)
+  harvestType HarvestType?         @relation(fields: [harvestTypeId], references: [id], onDelete: SetNull)
+  occurrences ScheduleOccurrence[]
+
+  @@index([weekday, status])
+  @@index([storeId])
+  @@index([institutionId])
+  @@map("schedule_commitments")
+}
+
+enum OccurrenceStatus {
+  PLANEJADA
+  CUMPRIDA
+  PENDENTE
+  JUSTIFICADA
+  REMANEJADA
+  CANCELADA
+}
+
+/// A instância datada do compromisso. É contra ela que o motor de pendência
+/// trabalha e é ela que a mensagem de WhatsApp cita.
+model ScheduleOccurrence {
+  id           String   @id @default(uuid()) @db.Uuid
+  commitmentId String   @map("commitment_id") @db.Uuid
+  date         DateTime @db.Date
+
+  /// Desnormalizado de propósito: a ocorrência precisa preservar a loja,
+  /// a instituição e o horário como estavam no dia, mesmo que a escala mude.
+  storeId       String  @map("store_id") @db.Uuid
+  institutionId String  @map("institution_id") @db.Uuid
+  assigneeUserId String? @map("assignee_user_id") @db.Uuid
+  expectedTime  String  @map("expected_time") @db.VarChar(5)
+  timeLabel     String? @map("time_label")
+
+  status       OccurrenceStatus @default(PLANEJADA)
+  statusReason String?          @map("status_reason")
+
+  /// Quando outra instituição cobre — o "quem vai?" que hoje é manual.
+  coveringInstitutionId String? @map("covering_institution_id") @db.Uuid
+  coveringUserId        String? @map("covering_user_id") @db.Uuid
+
+  /// Marcado pela varredura de pendência para não cobrar duas vezes.
+  pendingNotifiedAt DateTime? @map("pending_notified_at") @db.Timestamptz(6)
+  remindedAt        DateTime? @map("reminded_at") @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  commitment           ScheduleCommitment @relation(fields: [commitmentId], references: [id], onDelete: Cascade)
+  store                Store              @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  institution          Institution        @relation("OccurrenceInstitution", fields: [institutionId], references: [id], onDelete: Restrict)
+  coveringInstitution  Institution?       @relation("OccurrenceCoveringInstitution", fields: [coveringInstitutionId], references: [id], onDelete: SetNull)
+  assignee             User?              @relation("OccurrenceAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
+  coveringUser         User?              @relation("OccurrenceCoveringUser", fields: [coveringUserId], references: [id], onDelete: SetNull)
+  harvests             Harvest[]
+  notifications        Notification[]
+
+  /// Uma ocorrência por compromisso por dia — torna a materialização idempotente.
+  @@unique([commitmentId, date])
+  @@index([date, status])
+  @@index([storeId, date])
+  @@index([institutionId, date])
+  @@index([assigneeUserId, date])
+  @@map("schedule_occurrences")
+}
+
+// -----------------------------------------------------------------------------
+// Harvest — o registro que hoje é o Google Forms
+// -----------------------------------------------------------------------------
+
+enum HarvestSource {
+  APP
+  IMPORTACAO
+  LANCAMENTO_MANUAL
+}
+
+model Harvest {
+  id            String   @id @default(uuid()) @db.Uuid
+  occurrenceId  String?  @map("occurrence_id") @db.Uuid
+  storeId       String   @map("store_id") @db.Uuid
+  institutionId String   @map("institution_id") @db.Uuid
+  harvestTypeId String   @map("harvest_type_id") @db.Uuid
+
+  harvestedOn DateTime @map("harvested_on") @db.Date
+  harvestedAt String?  @map("harvested_at") @db.VarChar(5)
+
+  weightKg  Decimal @map("weight_kg") @db.Decimal(10, 2)
+  mainFoods String? @map("main_foods")
+  photoPath String? @map("photo_path")
+  notes     String?
+
+  collectorUserId String? @map("collector_user_id") @db.Uuid
+  /// Nome como veio da planilha/Google Forms. Preservado cru, sem conciliação:
+  /// daqui pra frente a identidade do colhedor vem do login.
+  legacyCollectorName String? @map("legacy_collector_name")
+  registeredByUserId  String? @map("registered_by_user_id") @db.Uuid
+
+  source HarvestSource @default(APP)
+  /// Chave de deduplicação da importação (linha original da planilha).
+  externalRef String? @unique @map("external_ref")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  occurrence   ScheduleOccurrence? @relation(fields: [occurrenceId], references: [id], onDelete: SetNull)
+  store        Store               @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  institution  Institution         @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  harvestType  HarvestType         @relation(fields: [harvestTypeId], references: [id], onDelete: Restrict)
+  collector    User?               @relation("HarvestCollector", fields: [collectorUserId], references: [id], onDelete: SetNull)
+  registeredBy User?               @relation("HarvestRegisteredBy", fields: [registeredByUserId], references: [id], onDelete: SetNull)
+
+  @@index([harvestedOn])
+  @@index([storeId, harvestedOn])
+  @@index([institutionId, harvestedOn])
+  @@index([collectorUserId, harvestedOn])
+  @@index([harvestTypeId, harvestedOn])
+  @@index([occurrenceId])
+  @@map("harvests")
+}
+
+// -----------------------------------------------------------------------------
+// Notifications — canal plugável: o domínio enfileira, o adaptador entrega
+// -----------------------------------------------------------------------------
+
+enum NotificationKind {
+  ESCALA_DO_DIA
+  COBRANCA_PENDENCIA
+  RESUMO_SEMANAL
+  PEDIDO_COBERTURA
+}
+
+enum NotificationChannel {
+  WHATSAPP
+  EMAIL
+}
+
+enum NotificationStatus {
+  NA_FILA
+  ENVIADA
+  FALHOU
+  CANCELADA
+}
+
+model NotificationTemplate {
+  id      String              @id @default(uuid()) @db.Uuid
+  kind    NotificationKind
+  channel NotificationChannel
+  /// Corpo com placeholders {{nome}}, {{loja}}, {{instituicao}}, {{link}}...
+  body    String
+  active  Boolean             @default(true)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([kind, channel])
+  @@map("notification_templates")
+}
+
+model Notification {
+  id      String              @id @default(uuid()) @db.Uuid
+  kind    NotificationKind
+  channel NotificationChannel @default(WHATSAPP)
+  status  NotificationStatus  @default(NA_FILA)
+
+  recipientUserId  String? @map("recipient_user_id") @db.Uuid
+  /// Telefone E.164, e-mail ou id de grupo — depende do adaptador plugado.
+  recipientAddress String  @map("recipient_address")
+  recipientName    String? @map("recipient_name")
+
+  body     String
+  /// Contexto estruturado para o adaptador (ids, links, itens da escala).
+  payload  Json?
+  attempts Int     @default(0)
+  error    String?
+
+  occurrenceId String? @map("occurrence_id") @db.Uuid
+
+  /// Chave de idempotência: impede cobrar a mesma pendência duas vezes.
+  dedupeKey String? @unique @map("dedupe_key")
+
+  scheduledFor DateTime  @default(now()) @map("scheduled_for") @db.Timestamptz(6)
+  sentAt       DateTime? @map("sent_at") @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  recipient  User?               @relation(fields: [recipientUserId], references: [id], onDelete: SetNull)
+  occurrence ScheduleOccurrence? @relation(fields: [occurrenceId], references: [id], onDelete: SetNull)
+
+  @@index([status, scheduledFor])
+  @@index([kind, createdAt])
+  @@index([recipientUserId])
+  @@map("notifications")
+}
+
+// -----------------------------------------------------------------------------
+// Shared kernel
+// -----------------------------------------------------------------------------
+
+/// Outbox: o domínio grava o evento na mesma transação do dado, e um
+/// despachante entrega depois. Evita "salvou mas não notificou".
+model OutboxEvent {
+  id          String    @id @default(uuid()) @db.Uuid
+  aggregate   String
+  aggregateId String    @map("aggregate_id")
+  eventName   String    @map("event_name")
+  payload     Json
+  processedAt DateTime? @map("processed_at") @db.Timestamptz(6)
+  attempts    Int       @default(0)
+  error       String?
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([processedAt, createdAt])
+  @@map("outbox_events")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  actorId   String?  @map("actor_id") @db.Uuid
+  action    String
+  entity    String
+  entityId  String   @map("entity_id")
+  before    Json?
+  after     Json?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_log")
+}

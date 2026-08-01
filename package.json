@@ -1,0 +1,27 @@
+{
+  "name": "a-ponte",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Rede Colheita — plataforma de gestão de colheitas de alimentos do Projeto Colheita (A Ponte)",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "build": "npm run build --workspace @a-ponte/contracts && npm run build --workspace @a-ponte/api && npm run build --workspace @a-ponte/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "dev:api": "npm run start:dev --workspace @a-ponte/api",
+    "dev:web": "npm run dev --workspace @a-ponte/web",
+    "db:generate": "npm run db:generate --workspace @a-ponte/api",
+    "db:migrate": "npm run db:migrate --workspace @a-ponte/api",
+    "db:seed": "npm run db:seed --workspace @a-ponte/api",
+    "import:legacy": "npm run import:legacy --workspace @a-ponte/api"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

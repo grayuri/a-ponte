@@ -1,0 +1,63 @@
+# =============================================================================
+# Deploy da API no Render.
+#
+# O frontend Next.js vai para a Vercel (aponte a raiz do projeto para
+# apps/web e o comando de build para `npm run build`), e o banco/auth ficam
+# no Supabase. Só a API precisa de um container de longa duração — é ela que
+# roda os jobs de escala e de cobrança no horário certo.
+# =============================================================================
+
+services:
+  - type: web
+    name: rede-colheita-api
+    runtime: docker
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    plan: starter
+    region: oregon
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3333
+      - key: API_GLOBAL_PREFIX
+        value: api
+      - key: APP_TIMEZONE
+        value: America/Fortaleza
+
+      # Liga os jobs automáticos. Mantenha em UMA instância só: dois
+      # containers com o scheduler ligado disparariam a escala duas vezes.
+      - key: SCHEDULER_ENABLED
+        value: true
+      - key: SCHEDULE_DISPATCH_TIME
+        value: '06:30'
+      - key: COMPLIANCE_CUTOFF_TIME
+        value: '20:00'
+      - key: SCHEDULE_HORIZON_DAYS
+        value: 14
+
+      # Canal de mensagens: comece em simulação, confira os textos no painel
+      # e só então troque para o provedor escolhido.
+      - key: NOTIFICATIONS_DRIVER
+        value: console
+      - key: NOTIFICATIONS_DRY_RUN
+        value: true
+
+      # Preencha no painel do Render (sync: false = não vai para o repositório).
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: PUBLIC_WEB_URL
+        sync: false
+      - key: NOTIFICATIONS_WEBHOOK_URL
+        sync: false
+      - key: NOTIFICATIONS_WEBHOOK_TOKEN
+        sync: false

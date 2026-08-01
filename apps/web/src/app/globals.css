@@ -1,0 +1,616 @@
+/* =============================================================================
+   Rede Colheita — folha de estilo única.
+   Mobile-first de verdade: o colhedor preenche em pé, dentro do supermercado,
+   com uma mão. Alvos de toque grandes, contraste alto, nada de hover-only.
+   ========================================================================== */
+
+:root {
+  --verde-900: #14532d;
+  --verde-700: #15803d;
+  --verde-600: #16a34a;
+  --verde-100: #dcfce7;
+  --verde-50: #f0fdf4;
+
+  --ambar-600: #d97706;
+  --ambar-100: #fef3c7;
+  --vermelho-600: #dc2626;
+  --vermelho-100: #fee2e2;
+  --azul-600: #2563eb;
+  --azul-100: #dbeafe;
+
+  --cinza-900: #111827;
+  --cinza-700: #374151;
+  --cinza-500: #6b7280;
+  --cinza-300: #d1d5db;
+  --cinza-200: #e5e7eb;
+  --cinza-100: #f3f4f6;
+  --cinza-50: #f9fafb;
+  --branco: #ffffff;
+
+  --raio: 10px;
+  --sombra: 0 1px 2px rgb(0 0 0 / 0.06), 0 1px 3px rgb(0 0 0 / 0.1);
+  --sombra-alta: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    'Helvetica Neue',
+    sans-serif;
+  background: var(--cinza-50);
+  color: var(--cinza-900);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--verde-700);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  line-height: 1.25;
+  font-weight: 650;
+}
+h1 {
+  font-size: 1.5rem;
+}
+h2 {
+  font-size: 1.15rem;
+}
+h3 {
+  font-size: 1rem;
+}
+
+/* ------------------------------------------------------------------ layout */
+
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.topo {
+  background: var(--verde-900);
+  color: var(--branco);
+  padding: 0.75rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.topo .marca {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--branco);
+}
+.topo .marca span {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 400;
+  opacity: 0.75;
+  letter-spacing: 0.02em;
+}
+
+.topo .usuario {
+  font-size: 0.8rem;
+  text-align: right;
+  opacity: 0.9;
+}
+
+.nav {
+  background: var(--verde-700);
+  display: flex;
+  gap: 0.25rem;
+  padding: 0 0.5rem;
+  overflow-x: auto;
+  position: sticky;
+  top: 56px;
+  z-index: 19;
+  scrollbar-width: none;
+}
+.nav::-webkit-scrollbar {
+  display: none;
+}
+
+.nav a {
+  color: rgb(255 255 255 / 0.85);
+  padding: 0.7rem 0.85rem;
+  font-size: 0.875rem;
+  white-space: nowrap;
+  border-bottom: 3px solid transparent;
+  text-decoration: none;
+}
+.nav a:hover {
+  color: var(--branco);
+  text-decoration: none;
+}
+.nav a[data-ativo='true'] {
+  color: var(--branco);
+  font-weight: 600;
+  border-bottom-color: var(--branco);
+}
+
+main {
+  flex: 1;
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 1.25rem 1rem 3rem;
+}
+
+.cabecalho-pagina {
+  margin-bottom: 1.25rem;
+}
+.cabecalho-pagina p {
+  margin: 0.35rem 0 0;
+  color: var(--cinza-500);
+  font-size: 0.9rem;
+}
+
+/* ------------------------------------------------------------------- cards */
+
+.card {
+  background: var(--branco);
+  border: 1px solid var(--cinza-200);
+  border-radius: var(--raio);
+  box-shadow: var(--sombra);
+  padding: 1rem;
+}
+
+.card + .card {
+  margin-top: 1rem;
+}
+
+.card-titulo {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--cinza-500);
+  margin-bottom: 0.75rem;
+}
+
+.grade {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.grade-2 {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr;
+}
+@media (min-width: 900px) {
+  .grade-2 {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* -------------------------------------------------------------------- kpis */
+
+.kpi {
+  background: var(--branco);
+  border: 1px solid var(--cinza-200);
+  border-radius: var(--raio);
+  padding: 0.9rem 1rem;
+  box-shadow: var(--sombra);
+}
+.kpi .rotulo {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--cinza-500);
+  font-weight: 600;
+}
+.kpi .valor {
+  font-size: 1.65rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-top: 0.15rem;
+}
+.kpi .apoio {
+  font-size: 0.78rem;
+  color: var(--cinza-500);
+}
+.kpi[data-destaque='verde'] .valor {
+  color: var(--verde-700);
+}
+.kpi[data-destaque='vermelho'] .valor {
+  color: var(--vermelho-600);
+}
+
+/* ------------------------------------------------------------------ tabela */
+
+.tabela-envolucro {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+th {
+  text-align: left;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--cinza-500);
+  font-weight: 600;
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--cinza-200);
+  white-space: nowrap;
+}
+
+td {
+  padding: 0.6rem;
+  border-bottom: 1px solid var(--cinza-100);
+  vertical-align: top;
+}
+
+tbody tr:hover {
+  background: var(--cinza-50);
+}
+
+td.numero,
+th.numero {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ----------------------------------------------------------------- etiquetas */
+
+.etiqueta {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.etiqueta[data-status='CUMPRIDA'] {
+  background: var(--verde-100);
+  color: var(--verde-900);
+}
+.etiqueta[data-status='PENDENTE'] {
+  background: var(--vermelho-100);
+  color: #7f1d1d;
+}
+.etiqueta[data-status='PLANEJADA'] {
+  background: var(--cinza-100);
+  color: var(--cinza-700);
+}
+.etiqueta[data-status='JUSTIFICADA'] {
+  background: var(--ambar-100);
+  color: #78350f;
+}
+.etiqueta[data-status='REMANEJADA'] {
+  background: var(--azul-100);
+  color: #1e3a8a;
+}
+.etiqueta[data-status='CANCELADA'] {
+  background: var(--cinza-200);
+  color: var(--cinza-500);
+}
+
+/* ---------------------------------------------------------------- formulário */
+
+label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--cinza-700);
+  margin-bottom: 0.3rem;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  font: inherit;
+  /* 16px é o mínimo que impede o iOS de dar zoom ao focar o campo. */
+  font-size: 16px;
+  padding: 0.65rem 0.7rem;
+  border: 1px solid var(--cinza-300);
+  border-radius: var(--raio);
+  background: var(--branco);
+  color: var(--cinza-900);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: 2px solid var(--verde-600);
+  outline-offset: -1px;
+  border-color: var(--verde-600);
+}
+
+.campo + .campo {
+  margin-top: 0.9rem;
+}
+
+.campo-duplo {
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: 1fr 1fr;
+}
+
+.dica {
+  font-size: 0.78rem;
+  color: var(--cinza-500);
+  margin-top: 0.25rem;
+}
+
+button,
+.botao {
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 0.7rem 1.1rem;
+  border-radius: var(--raio);
+  border: 1px solid transparent;
+  background: var(--verde-700);
+  color: var(--branco);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  /* 44px é o alvo de toque confortável de uma mão só. */
+  min-height: 44px;
+  text-decoration: none;
+}
+
+button:hover:not(:disabled),
+.botao:hover {
+  background: var(--verde-900);
+  text-decoration: none;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+button[data-variante='secundario'],
+.botao[data-variante='secundario'] {
+  background: var(--branco);
+  color: var(--cinza-700);
+  border-color: var(--cinza-300);
+}
+button[data-variante='secundario']:hover:not(:disabled),
+.botao[data-variante='secundario']:hover {
+  background: var(--cinza-100);
+}
+
+button[data-variante='perigo'] {
+  background: var(--vermelho-600);
+}
+
+button[data-variante='pequeno'],
+.botao[data-variante='pequeno'] {
+  font-size: 0.82rem;
+  padding: 0.4rem 0.7rem;
+  min-height: 36px;
+}
+
+.linha-botoes {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+
+/* -------------------------------------------------------------------- avisos */
+
+.aviso {
+  border-radius: var(--raio);
+  padding: 0.7rem 0.9rem;
+  font-size: 0.875rem;
+  margin-bottom: 1rem;
+  border: 1px solid;
+}
+.aviso[data-tipo='erro'] {
+  background: var(--vermelho-100);
+  border-color: #fca5a5;
+  color: #7f1d1d;
+}
+.aviso[data-tipo='sucesso'] {
+  background: var(--verde-100);
+  border-color: #86efac;
+  color: var(--verde-900);
+}
+.aviso[data-tipo='atencao'] {
+  background: var(--ambar-100);
+  border-color: #fcd34d;
+  color: #78350f;
+}
+.aviso[data-tipo='info'] {
+  background: var(--azul-100);
+  border-color: #93c5fd;
+  color: #1e3a8a;
+}
+
+.vazio {
+  text-align: center;
+  padding: 2.5rem 1rem;
+  color: var(--cinza-500);
+}
+.vazio strong {
+  display: block;
+  color: var(--cinza-700);
+  margin-bottom: 0.25rem;
+}
+
+/* -------------------------------------------------------- cartão de colheita */
+
+.colheita {
+  border: 1px solid var(--cinza-200);
+  border-left: 4px solid var(--cinza-300);
+  border-radius: var(--raio);
+  background: var(--branco);
+  padding: 0.9rem;
+  box-shadow: var(--sombra);
+}
+.colheita + .colheita {
+  margin-top: 0.75rem;
+}
+.colheita[data-status='PENDENTE'] {
+  border-left-color: var(--vermelho-600);
+}
+.colheita[data-status='CUMPRIDA'] {
+  border-left-color: var(--verde-600);
+}
+.colheita[data-status='PLANEJADA'] {
+  border-left-color: var(--ambar-600);
+}
+.colheita[data-status='REMANEJADA'] {
+  border-left-color: var(--azul-600);
+}
+
+.colheita .topo-cartao {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+.colheita .loja {
+  font-weight: 650;
+  font-size: 1.02rem;
+}
+.colheita .meta {
+  font-size: 0.85rem;
+  color: var(--cinza-500);
+  margin-top: 0.2rem;
+}
+.colheita .horario {
+  font-weight: 700;
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------------- calendário */
+
+.calendario td,
+.calendario th {
+  padding: 0.25rem;
+  text-align: center;
+  font-size: 0.75rem;
+  border: 1px solid var(--cinza-100);
+}
+.calendario th:first-child,
+.calendario td:first-child {
+  text-align: left;
+  white-space: nowrap;
+  position: sticky;
+  left: 0;
+  background: var(--branco);
+  z-index: 1;
+  min-width: 200px;
+}
+.calendario .tem {
+  background: var(--verde-100);
+  font-weight: 600;
+  color: var(--verde-900);
+}
+
+/* ------------------------------------------------------------------- barras */
+
+.barra {
+  height: 6px;
+  background: var(--cinza-200);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 0.3rem;
+}
+.barra > span {
+  display: block;
+  height: 100%;
+  background: var(--verde-600);
+  border-radius: 999px;
+}
+.barra[data-tom='alerta'] > span {
+  background: var(--vermelho-600);
+}
+
+/* -------------------------------------------------------------------- login */
+
+.login-tela {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+  background: linear-gradient(160deg, var(--verde-900), #052e16);
+}
+
+.login-caixa {
+  width: 100%;
+  max-width: 400px;
+  background: var(--branco);
+  border-radius: 14px;
+  padding: 1.75rem;
+  box-shadow: var(--sombra-alta);
+}
+
+.login-caixa .marca {
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+.login-caixa .marca strong {
+  display: block;
+  font-size: 1.35rem;
+  color: var(--verde-900);
+}
+.login-caixa .marca span {
+  font-size: 0.85rem;
+  color: var(--cinza-500);
+}
+
+.login-caixa button {
+  width: 100%;
+  margin-top: 1.25rem;
+}
+
+.filtros {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  margin-bottom: 1rem;
+}
+.filtros .campo {
+  margin-top: 0;
+  min-width: 150px;
+}
+.filtros label {
+  margin-bottom: 0.2rem;
+}
