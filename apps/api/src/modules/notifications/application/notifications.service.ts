@@ -1,0 +1,444 @@
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { NotificationKind, Prisma } from '@prisma/client';
+import type { DispatchResultView, NotificationLogView, Paginated } from '@a-ponte/contracts';
+import type { AppEnv } from '../../../config/env.config';
+import { DateOnly } from '../../../shared/domain/date-only';
+import { PrismaService } from '../../../shared/infrastructure/prisma.service';
+import {
+  MESSAGE_GATEWAY,
+  type MessageGateway,
+} from '../domain/message-gateway.port';
+import { MessageTemplates, type ScheduleItem } from '../domain/message-templates';
+
+interface RecipientBucket {
+  userId: string | null;
+  name: string;
+  address: string;
+  items: ScheduleItem[];
+}
+
+/**
+ * Notificações — o Fluxo 1 e o Fluxo 2 que o Geraldo descreveu.
+ *
+ * O desenho tem três garantias que a operação manual não tem:
+ *   1. Agrupa por pessoa. Quem tem três colheitas no dia recebe UMA mensagem
+ *      com as três, não três mensagens.
+ *   2. É idempotente. `dedupeKey` impede que rodar o disparo duas vezes cobre
+ *      a mesma pendência duas vezes — o que, com 233 pessoas, seria desastre.
+ *   3. Registra tudo. Cada mensagem fica gravada com o texto exato, o destino
+ *      e o resultado da entrega.
+ */
+@Injectable()
+export class NotificationsService {
+  private readonly logger = new Logger(NotificationsService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly config: ConfigService<AppEnv, true>,
+    @Inject(MESSAGE_GATEWAY) private readonly gateway: MessageGateway,
+  ) {}
+
+  // ------------------------------------------------- Fluxo 1: escala do dia
+
+  /**
+   * Enfileira a escala do dia para cada responsável.
+   *
+   * Não envia na hora: grava na fila e deixa o `flushQueue` entregar. Assim uma
+   * queda do provedor de WhatsApp não perde a escala do dia — ela fica na fila
+   * e sai quando o canal voltar.
+   */
+  async queueDailySchedule(date?: string): Promise<DispatchResultView> {
+    const tz = this.config.get('APP_TIMEZONE', { infer: true });
+    const target = date ? DateOnly.parse(date) : DateOnly.todayIn(tz);
+
+    const occurrences = await this.prisma.scheduleOccurrence.findMany({
+      where: {
+        date: target.toUtcDate(),
+        status: { in: ['PLANEJADA', 'REMANEJADA'] },
+      },
+      include: {
+        store: { include: { chain: { select: { name: true } } } },
+        institution: { select: { id: true, name: true, phone: true, contactName: true } },
+        coveringInstitution: { select: { id: true, name: true, phone: true, contactName: true } },
+        assignee: { select: { id: true, fullName: true, phone: true } },
+        coveringUser: { select: { id: true, fullName: true, phone: true } },
+        commitment: { include: { harvestType: { select: { label: true } } } },
+      },
+      orderBy: [{ expectedTime: 'asc' }],
+    });
+
+    const buckets = new Map<string, RecipientBucket>();
+    let skipped = 0;
+
+    for (const occ of occurrences) {
+      // Remanejada é responsabilidade de quem cobriu, não de quem foi escalado.
+      const person = occ.coveringUserId ? occ.coveringUser : occ.assignee;
+      const institution = occ.coveringInstitutionId ? occ.coveringInstitution : occ.institution;
+
+      const address = person?.phone ?? institution?.phone ?? null;
+      const name = person?.fullName ?? institution?.contactName ?? institution?.name ?? 'equipe';
+
+      if (!address) {
+        // Sem telefone não há como avisar. Contar isso é o que revela o
+        // cadastro incompleto — na planilha, simplesmente não aparecia.
+        skipped += 1;
+        this.logger.warn(
+          `Sem telefone para avisar sobre ${occ.store.name} em ${target.toString()}. ` +
+            `Instituição: ${occ.institution.name}.`,
+        );
+        continue;
+      }
+
+      const key = person?.id ?? `inst:${institution?.id ?? occ.institutionId}`;
+      const bucket = buckets.get(key) ?? { userId: person?.id ?? null, name, address, items: [] };
+
+      bucket.items.push({
+        occurrenceId: occ.id,
+        storeName: occ.store.shiftLabel
+          ? `${occ.store.name} (${occ.store.shiftLabel})`
+          : occ.store.name,
+        chainName: occ.store.chain.name,
+        expectedTime: occ.expectedTime,
+        timeLabel: occ.timeLabel,
+        institutionName: institution?.name ?? occ.institution.name,
+        harvestTypeLabel: occ.commitment.harvestType?.label ?? null,
+      });
+
+      buckets.set(key, bucket);
+    }
+
+    const linkApp = `${this.config.get('PUBLIC_WEB_URL', { infer: true })}/minhas-colheitas`;
+    let queued = 0;
+
+    for (const [key, bucket] of buckets) {
+      const body = MessageTemplates.escalaDoDia({
+        nome: this.firstName(bucket.name),
+        data: target.toString(),
+        itens: bucket.items,
+        linkApp,
+      });
+
+      const created = await this.enqueue({
+        kind: 'ESCALA_DO_DIA',
+        recipientUserId: bucket.userId,
+        recipientAddress: bucket.address,
+        recipientName: bucket.name,
+        body,
+        payload: { date: target.toString(), occurrenceIds: bucket.items.map((i) => i.occurrenceId) },
+        dedupeKey: `escala:${target.toString()}:${key}`,
+      });
+
+      if (created) queued += 1;
+    }
+
+    await this.prisma.scheduleOccurrence.updateMany({
+      where: { date: target.toUtcDate(), status: 'PLANEJADA', remindedAt: null },
+      data: { remindedAt: new Date() },
+    });
+
+    return { date: target.toString(), queued, skipped, recipients: buckets.size };
+  }
+
+  // ------------------------------------------ Fluxo 2: cobrança de pendência
+
+  /** Enfileira a cobrança das ocorrências já marcadas como PENDENTE. */
+  async queuePendingAlerts(date?: string): Promise<DispatchResultView> {
+    const tz = this.config.get('APP_TIMEZONE', { infer: true });
+    const target = date ? DateOnly.parse(date) : DateOnly.todayIn(tz);
+
+    const pending = await this.prisma.scheduleOccurrence.findMany({
+      where: {
+        date: target.toUtcDate(),
+        status: 'PENDENTE',
+        pendingNotifiedAt: null,
+      },
+      include: {
+        store: { include: { chain: { select: { name: true } } } },
+        institution: { select: { id: true, name: true, phone: true, contactName: true } },
+        coveringInstitution: { select: { id: true, name: true, phone: true, contactName: true } },
+        assignee: { select: { id: true, fullName: true, phone: true } },
+        coveringUser: { select: { id: true, fullName: true, phone: true } },
+        commitment: { include: { harvestType: { select: { label: true } } } },
+      },
+    });
+
+    const buckets = new Map<string, RecipientBucket & { occurrenceIds: string[] }>();
+    let skipped = 0;
+
+    for (const occ of pending) {
+      const person = occ.coveringUserId ? occ.coveringUser : occ.assignee;
+      const institution = occ.coveringInstitutionId ? occ.coveringInstitution : occ.institution;
+      const address = person?.phone ?? institution?.phone ?? null;
+      const name = person?.fullName ?? institution?.contactName ?? institution?.name ?? 'equipe';
+
+      if (!address) {
+        skipped += 1;
+        continue;
+      }
+
+      const key = person?.id ?? `inst:${institution?.id ?? occ.institutionId}`;
+      const bucket =
+        buckets.get(key) ??
+        { userId: person?.id ?? null, name, address, items: [], occurrenceIds: [] };
+
+      bucket.items.push({
+        occurrenceId: occ.id,
+        storeName: occ.store.shiftLabel
+          ? `${occ.store.name} (${occ.store.shiftLabel})`
+          : occ.store.name,
+        chainName: occ.store.chain.name,
+        expectedTime: occ.expectedTime,
+        timeLabel: occ.timeLabel,
+        institutionName: institution?.name ?? occ.institution.name,
+        harvestTypeLabel: occ.commitment.harvestType?.label ?? null,
+      });
+      bucket.occurrenceIds.push(occ.id);
+
+      buckets.set(key, bucket);
+    }
+
+    const linkApp = `${this.config.get('PUBLIC_WEB_URL', { infer: true })}/minhas-colheitas`;
+    let queued = 0;
+
+    for (const [key, bucket] of buckets) {
+      const body = MessageTemplates.cobrancaPendencia({
+        nome: this.firstName(bucket.name),
+        data: target.toString(),
+        itens: bucket.items,
+        linkApp,
+      });
+
+      const created = await this.enqueue({
+        kind: 'COBRANCA_PENDENCIA',
+        recipientUserId: bucket.userId,
+        recipientAddress: bucket.address,
+        recipientName: bucket.name,
+        body,
+        payload: { date: target.toString(), occurrenceIds: bucket.occurrenceIds },
+        dedupeKey: `pendencia:${target.toString()}:${key}`,
+        occurrenceId: bucket.occurrenceIds[0] ?? null,
+      });
+
+      if (created) {
+        queued += 1;
+        await this.prisma.scheduleOccurrence.updateMany({
+          where: { id: { in: bucket.occurrenceIds } },
+          data: { pendingNotifiedAt: new Date() },
+        });
+      }
+    }
+
+    return { date: target.toString(), queued, skipped, recipients: buckets.size };
+  }
+
+  /** Pedido de cobertura para uma instituição candidata. */
+  async queueCoverageRequest(params: {
+    occurrenceId: string;
+    institutionId: string;
+  }): Promise<boolean> {
+    const [occurrence, institution] = await Promise.all([
+      this.prisma.scheduleOccurrence.findUnique({
+        where: { id: params.occurrenceId },
+        include: {
+          store: { select: { name: true, shiftLabel: true } },
+          institution: { select: { name: true } },
+        },
+      }),
+      this.prisma.institution.findUnique({
+        where: { id: params.institutionId },
+        select: { name: true, contactName: true, phone: true },
+      }),
+    ]);
+
+    if (!occurrence || !institution?.phone) return false;
+
+    const date = DateOnly.fromJsDate(occurrence.date).toString();
+    const body = MessageTemplates.pedidoCobertura({
+      nome: this.firstName(institution.contactName ?? institution.name),
+      data: date,
+      storeName: occurrence.store.shiftLabel
+        ? `${occurrence.store.name} (${occurrence.store.shiftLabel})`
+        : occurrence.store.name,
+      horario: occurrence.timeLabel ?? occurrence.expectedTime,
+      instituicaoOriginal: occurrence.institution.name,
+      linkApp: `${this.config.get('PUBLIC_WEB_URL', { infer: true })}/escala`,
+    });
+
+    return this.enqueue({
+      kind: 'PEDIDO_COBERTURA',
+      recipientUserId: null,
+      recipientAddress: institution.phone,
+      recipientName: institution.contactName ?? institution.name,
+      body,
+      payload: { occurrenceId: params.occurrenceId, institutionId: params.institutionId },
+      dedupeKey: `cobertura:${params.occurrenceId}:${params.institutionId}`,
+      occurrenceId: params.occurrenceId,
+    });
+  }
+
+  // ----------------------------------------------------------------- fila
+
+  /**
+   * Entrega o que está na fila. Chamado pelo cron e disponível como rota
+   * manual, para a coordenação forçar o envio depois de conferir os textos.
+   */
+  async flushQueue(limit = 200): Promise<{ sent: number; failed: number }> {
+    const pending = await this.prisma.notification.findMany({
+      where: { status: 'NA_FILA', attempts: { lt: 5 }, scheduledFor: { lte: new Date() } },
+      orderBy: { scheduledFor: 'asc' },
+      take: limit,
+    });
+
+    let sent = 0;
+    let failed = 0;
+
+    for (const notification of pending) {
+      const result = await this.gateway.send({
+        to: notification.recipientAddress,
+        body: notification.body,
+        metadata: {
+          kind: notification.kind,
+          notificationId: notification.id,
+          ...((notification.payload as Record<string, unknown> | null) ?? {}),
+        },
+      });
+
+      if (result.delivered) {
+        await this.prisma.notification.update({
+          where: { id: notification.id },
+          data: {
+            status: 'ENVIADA',
+            sentAt: new Date(),
+            attempts: { increment: 1 },
+            error: null,
+          },
+        });
+        sent += 1;
+      } else {
+        const attempts = notification.attempts + 1;
+        await this.prisma.notification.update({
+          where: { id: notification.id },
+          data: {
+            // Cinco tentativas e desiste — mas o registro fica, com o erro,
+            // para a coordenação ver que aquela pessoa não foi avisada.
+            status: attempts >= 5 ? 'FALHOU' : 'NA_FILA',
+            attempts,
+            error: result.error?.slice(0, 500) ?? 'Falha desconhecida no envio',
+          },
+        });
+        failed += 1;
+      }
+    }
+
+    if (sent || failed) {
+      this.logger.log(`Fila processada via ${this.gateway.name}: ${sent} enviada(s), ${failed} falha(s).`);
+    }
+
+    return { sent, failed };
+  }
+
+  async listLog(query: {
+    kind?: NotificationKind;
+    status?: string;
+    from?: string;
+    to?: string;
+    page: number;
+    pageSize: number;
+  }): Promise<Paginated<NotificationLogView>> {
+    const where: Prisma.NotificationWhereInput = {
+      ...(query.kind ? { kind: query.kind } : {}),
+      ...(query.status ? { status: query.status as never } : {}),
+    };
+
+    if (query.from || query.to) {
+      where.createdAt = {
+        ...(query.from ? { gte: DateOnly.parse(query.from).toUtcDate() } : {}),
+        ...(query.to ? { lte: DateOnly.parse(query.to).addDays(1).toUtcDate() } : {}),
+      };
+    }
+
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.notification.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+      }),
+      this.prisma.notification.count({ where }),
+    ]);
+
+    return {
+      items: rows.map((row) => ({
+        id: row.id,
+        kind: row.kind,
+        channel: row.channel,
+        status: row.status,
+        recipientName: row.recipientName,
+        recipientAddress: row.recipientAddress,
+        body: row.body,
+        attempts: row.attempts,
+        error: row.error,
+        scheduledFor: row.scheduledFor.toISOString(),
+        sentAt: row.sentAt?.toISOString() ?? null,
+        createdAt: row.createdAt.toISOString(),
+      })),
+      page: query.page,
+      pageSize: query.pageSize,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / query.pageSize)),
+    };
+  }
+
+  /** Qual adaptador está plugado — a tela de configuração mostra isso. */
+  gatewayInfo() {
+    return {
+      driver: this.gateway.name,
+      supportsGroups: this.gateway.supportsGroups,
+      dryRun: this.config.get('NOTIFICATIONS_DRY_RUN', { infer: true }),
+    };
+  }
+
+  // -------------------------------------------------------------- helpers
+
+  /** Devolve false quando a chave de deduplicação já existia. */
+  private async enqueue(input: {
+    kind: NotificationKind;
+    recipientUserId: string | null;
+    recipientAddress: string;
+    recipientName: string;
+    body: string;
+    payload: Prisma.InputJsonValue;
+    dedupeKey: string;
+    occurrenceId?: string | null;
+  }): Promise<boolean> {
+    try {
+      await this.prisma.notification.create({
+        data: {
+          kind: input.kind,
+          channel: 'WHATSAPP',
+          recipientUserId: input.recipientUserId,
+          recipientAddress: input.recipientAddress,
+          recipientName: input.recipientName,
+          body: input.body,
+          payload: input.payload,
+          dedupeKey: input.dedupeKey,
+          occurrenceId: input.occurrenceId ?? null,
+        },
+      });
+      return true;
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        return false; // já enfileirada — a idempotência funcionando
+      }
+      throw error;
+    }
+  }
+
+  private firstName(fullName: string): string {
+    return fullName.trim().split(/\s+/)[0] ?? fullName;
+  }
+}

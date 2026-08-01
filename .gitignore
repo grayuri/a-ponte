@@ -1,0 +1,26 @@
+node_modules/
+dist/
+build/
+.next/
+out/
+coverage/
+
+.env
+.env.local
+.env.*.local
+!.env.example
+
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# artefatos de importação
+apps/api/tmp/
+.turbo/
+
+# Planilha de origem — contém dados operacionais reais (nomes de mais de 230
+# pessoas, instituições e endereços). Fica fora do repositório por padrão;
+# quem for rodar a importação recebe o arquivo por outro canal.
+# Remova esta linha se o repositório for privado e você quiser versioná-la.
+Contexts/
