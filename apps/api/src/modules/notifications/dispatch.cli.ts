@@ -27,11 +27,18 @@ async function main(): Promise<void> {
 
   try {
     const notifications = app.get(NotificationsService);
-    const gateway = notifications.gatewayInfo();
+    const gateway = await notifications.gatewayInfo();
 
     logger.log(
       `Canal: ${gateway.driver}${gateway.dryRun ? ' (modo seco — nada sai para fora)' : ''}`,
     );
+
+    if (gateway.connected === false) {
+      logger.error(
+        `Sessão do WhatsApp indisponível: ${gateway.connectionDetail ?? 'motivo não informado'}\n` +
+          '  As mensagens vão ser montadas e ficar na fila, mas nenhuma sai enquanto isso não for resolvido.',
+      );
+    }
 
     const resultado = pendencias
       ? await notifications.queuePendingAlerts(data)

@@ -4,8 +4,8 @@ import type { AppEnv } from '../../config/env.config';
 import { NotificationsService } from './application/notifications.service';
 import { MESSAGE_GATEWAY, type MessageGateway } from './domain/message-gateway.port';
 import { ConsoleMessageGateway } from './infrastructure/console-message.gateway';
-import { TwilioMessageGateway } from './infrastructure/twilio-message.gateway';
 import { WebhookMessageGateway } from './infrastructure/webhook-message.gateway';
+import { ZapiMessageGateway } from './infrastructure/zapi-message.gateway';
 import { NotificationsController } from './interface/notifications.controller';
 
 /**
@@ -18,16 +18,16 @@ import { NotificationsController } from './interface/notifications.controller';
  */
 const gatewayProvider: Provider = {
   provide: MESSAGE_GATEWAY,
-  inject: [ConfigService, ConsoleMessageGateway, WebhookMessageGateway, TwilioMessageGateway],
+  inject: [ConfigService, ConsoleMessageGateway, WebhookMessageGateway, ZapiMessageGateway],
   useFactory: (
     config: ConfigService<AppEnv, true>,
     console: ConsoleMessageGateway,
     webhook: WebhookMessageGateway,
-    twilio: TwilioMessageGateway,
+    zapi: ZapiMessageGateway,
   ): MessageGateway => {
     switch (config.get('NOTIFICATIONS_DRIVER', { infer: true })) {
-      case 'twilio':
-        return twilio;
+      case 'zapi':
+        return zapi;
       case 'webhook':
         return webhook;
       default:
@@ -42,7 +42,7 @@ const gatewayProvider: Provider = {
     NotificationsService,
     ConsoleMessageGateway,
     WebhookMessageGateway,
-    TwilioMessageGateway,
+    ZapiMessageGateway,
     gatewayProvider,
   ],
   exports: [NotificationsService],

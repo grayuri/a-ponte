@@ -228,31 +228,39 @@ Como você pediu, o provedor fica em aberto. O domínio conhece só a porta
 |---|---|
 | `console` (padrão) | Monta e grava a mensagem, **não envia nada**. Aparece no log e na tela de Notificações |
 | `webhook` | Faz `POST {to, body, metadata}` em `NOTIFICATIONS_WEBHOOK_URL` |
-| `twilio` | API oficial do WhatsApp via Twilio |
+| `zapi` | Z-API — envia para pessoas **e para grupos** |
 
-### Twilio — o que muda na operação
+### Z-API — o que muda na operação
 
-Duas regras da Meta, herdadas por qualquer provedor oficial:
+**Envia para grupo.** O destino aceita o id de um grupo, então dá para continuar postando
+a escala nos grupos que já existem — sem depender de coletar o telefone das 125
+instituições antes de começar. É a diferença prática frente à API oficial, que é só 1:1.
 
-**Não existe envio para grupo.** A API oficial é só 1:1. O disparo já agrupa por pessoa,
-então nada quebra — mas postar a escala num grupo, como se faz hoje, não se traduz.
+**Sem janela de 24h e sem template.** O texto vai como foi escrito, e mudar a redação não
+passa por aprovação de ninguém.
 
-**Janela de 24 horas.** Fora de 24h desde a última mensagem que a *pessoa* enviou, só se
-pode mandar template aprovado pela Meta. **A escala das 6h30 cai exatamente nesse caso.**
-Sem template, o envio falha com o erro 63016.
+Em troca, é uma sessão do WhatsApp Web mantida por engenharia reversa:
+
+- **A sessão cai sozinha** — celular offline, logout remoto, queda de rede. A tela de
+  Notificações mostra o estado da conexão em destaque; confira antes de contar com o
+  disparo da manhã.
+- **O número pode ser bloqueado** pela Meta. Por isso as mensagens saem espaçadas
+  (`NOTIFICATIONS_THROTTLE_MS`, 3s por padrão, mais o `ZAPI_DELAY_SECONDS` do provedor):
+  rajada de mensagens parecidas é o padrão mais denunciável que existe.
 
 Passo a passo:
 
-1. Crie os templates em **Messaging → Content Template Builder** e envie para aprovação.
-   As lacunas são posicionais e o sistema preenche nesta ordem:
-   `{{1}}` nome · `{{2}}` data · `{{3}}` lista de colheitas · `{{4}}` link do app
-2. Preencha os `TWILIO_CONTENT_SID_*` no `.env` da API.
-3. Teste no **sandbox** primeiro (`+14155238886`). Cada pessoa precisa mandar
-   `join <código>` para o sandbox antes de conseguir receber.
-4. Só então desligue `NOTIFICATIONS_DRY_RUN`.
+1. Crie a instância no painel do Z-API e leia o QR Code com o número do projeto.
+2. Preencha `ZAPI_INSTANCE_ID` e `ZAPI_INSTANCE_TOKEN` (painel da instância) e
+   `ZAPI_CLIENT_TOKEN` — **este último é outro valor**, o token de segurança da conta,
+   em Z-API → Segurança. Confundir os dois dá `403` no envio.
+3. Com `NOTIFICATIONS_DRY_RUN=true`, rode `npm run notifications:dispatch` e confira os
+   textos na tela de Notificações.
+4. Só então desligue o `DRY_RUN`, começando por **um** destinatário.
 
-Sem Content SID configurado, o adaptador envia texto livre — o que funciona no sandbox e
-dentro da janela de 24h, mas não serve para o disparo da manhã em produção.
+> Para enviar a um grupo, use o id do grupo no lugar do telefone (formato
+> `1203630195...-group` ou `...@g.us`). O adaptador reconhece e não tenta tratá-lo como
+> número.
 
 O modo `console` existe para exercitar o fluxo inteiro antes de decidir o provedor: a
 coordenação lê os textos reais na tela de Notificações e aprova. Quando decidir, o

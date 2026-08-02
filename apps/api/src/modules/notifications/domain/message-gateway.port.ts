@@ -24,11 +24,26 @@ export interface DeliveryResult {
   error?: string;
 }
 
+export interface GatewayStatus {
+  /** A sessão está de pé e capaz de enviar? */
+  connected: boolean;
+  detail?: string;
+}
+
 export interface MessageGateway {
   readonly name: string;
   send(message: OutboundMessage): Promise<DeliveryResult>;
   /** Alguns provedores enviam para grupo; a oficial da Meta, não. */
   readonly supportsGroups: boolean;
+  /**
+   * Estado da conexão, quando o provedor souber informar.
+   *
+   * Provedores não-oficiais mantêm uma sessão do WhatsApp Web que cai sozinha
+   * — por queda de rede, celular desligado, ou logout remoto. Sem visibilidade
+   * disso, a escala simplesmente não sai numa manhã e ninguém descobre até as
+   * instituições reclamarem. Quem tem essa informação deve expô-la.
+   */
+  status?(): Promise<GatewayStatus>;
 }
 
 export const MESSAGE_GATEWAY = Symbol('MESSAGE_GATEWAY');

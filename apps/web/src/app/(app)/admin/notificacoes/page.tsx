@@ -25,6 +25,8 @@ interface InfoGateway {
   driver: string;
   supportsGroups: boolean;
   dryRun: boolean;
+  connected: boolean | null;
+  connectionDetail: string | null;
 }
 
 export default async function PaginaNotificacoes({
@@ -82,14 +84,27 @@ export default async function PaginaNotificacoes({
         </div>
       )}
 
-      {gateway.driver === 'twilio' ? (
+      {gateway.connected === false ? (
+        <div className="aviso" data-tipo="erro" role="alert">
+          <strong>A sessão do WhatsApp está fora do ar.</strong>{' '}
+          {gateway.connectionDetail ?? 'Motivo não informado pelo provedor.'} As mensagens
+          continuam sendo montadas e ficam na fila, mas <strong>nenhuma sai</strong> enquanto
+          isso não for resolvido.
+        </div>
+      ) : null}
+
+      {gateway.connected === true && gateway.connectionDetail ? (
         <div className="aviso" data-tipo="atencao">
-          <strong>Twilio: atenção à janela de 24 horas.</strong> Fora de 24h desde a última
-          mensagem que a pessoa enviou, a Meta só permite <strong>template aprovado</strong>. A
-          escala das 6h30 cai exatamente nesse caso. Cadastre os templates no Twilio (Messaging →
-          Content Template Builder), aprove na Meta e preencha os Content SIDs no{' '}
-          <code>.env</code> da API. Sem isso, o envio falha com o erro 63016 — que aparece aqui
-          na lista, explicado.
+          <strong>Sessão conectada, com ressalva.</strong> {gateway.connectionDetail}
+        </div>
+      ) : null}
+
+      {gateway.driver === 'z-api' ? (
+        <div className="aviso" data-tipo="info">
+          <strong>O Z-API mantém uma sessão do WhatsApp Web</strong>, que depende do celular do
+          número ficar online e pode cair sozinha. Confira este quadro antes de contar com o
+          disparo da manhã. As mensagens saem espaçadas de propósito — rajada é o padrão que
+          mais atrai bloqueio.
         </div>
       ) : null}
 
