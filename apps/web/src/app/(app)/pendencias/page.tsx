@@ -32,6 +32,7 @@ export default async function PaginaPendencias({
 
   const podeVarrer = usuario.role === 'ADMIN' || usuario.role === 'COORDENADOR';
   const pLinhas = paginar(dados.rows, lerPagina(searchParams.pagina));
+  const planejadas = dados.rows.filter((r) => r.status === 'PLANEJADA').length;
 
   return (
     <>
@@ -39,7 +40,9 @@ export default async function PaginaPendencias({
         <h1>Quem preencheu e quem faltou</h1>
         <p>
           Semana de {formatarData(dados.weekStart)} a {formatarData(dados.weekEnd)}. Cada linha é
-          um compromisso da escala — loja, dia e instituição responsável.
+          um compromisso da escala — loja, dia e instituição responsável. Só vira pendência
+          quem já passou do próprio horário; quem tem colheita marcada mais tarde aparece
+          como planejada.
         </p>
       </div>
 
@@ -79,7 +82,7 @@ export default async function PaginaPendencias({
         >
           Próxima semana →
         </a>
-        {podeVarrer ? <AcoesPendencia /> : null}
+        {podeVarrer ? <AcoesPendencia hoje={hojeIso()} /> : null}
       </div>
 
       <div className="grade">
@@ -92,6 +95,11 @@ export default async function PaginaPendencias({
           <div className="rotulo">Preencheram</div>
           <div className="valor">{dados.fulfilled}</div>
           <div className="apoio">de {dados.totalCommitments} compromissos</div>
+        </div>
+        <div className="kpi">
+          <div className="rotulo">Ainda no prazo</div>
+          <div className="valor">{planejadas}</div>
+          <div className="apoio">horário ainda não chegou</div>
         </div>
         <div className="kpi">
           <div className="rotulo">% preenchido</div>

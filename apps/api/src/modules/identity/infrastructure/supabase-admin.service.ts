@@ -101,6 +101,38 @@ export class SupabaseAdminService {
     return data?.signedUrl ?? null;
   }
 
+  /**
+   * Assina várias fotos de uma vez.
+   *
+   * Uma lista de 10 colheitas com foto significaria 10 idas ao Storage se
+   * fosse uma por vez. O Supabase aceita o lote numa chamada só.
+   */
+  async signedPhotoUrls(
+    paths: string[],
+    expiresInSeconds = 3600,
+  ): Promise<Map<string, string>> {
+    const unicos = [...new Set(paths.filter(Boolean))];
+    if (!unicos.length) return new Map();
+
+    const { data, error } = await this.client.storage
+      .from(this.bucket)
+      .createSignedUrls(unicos, expiresInSeconds);
+
+    if (error) {
+      this.logger.warn(`Não foi possível assinar ${unicos.length} foto(s): ${error.message}`);
+      return new Map();
+    }
+
+    // Um caminho quebrado no meio do lote não pode derrubar os demais: o
+    // Supabase devolve o erro por item, e simplesmente omitimos esse.
+    const mapa = new Map<string, string>();
+    for (const item of data ?? []) {
+      if (item.error || !item.path || !item.signedUrl) continue;
+      mapa.set(item.path, item.signedUrl);
+    }
+    return mapa;
+  }
+
   async removePhoto(path: string): Promise<void> {
     await this.client.storage.from(this.bucket).remove([path]);
   }

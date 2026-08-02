@@ -13,6 +13,22 @@ import {
 const enumOf = <T extends Record<string, string>>(obj: T) =>
   z.enum(Object.values(obj) as [string, ...string[]]);
 
+/**
+ * Booleano vindo de query string.
+ *
+ * NÃO use `z.coerce.boolean()` aqui: ele faz `Boolean(valor)`, e toda string
+ * não vazia vira `true` — inclusive `"false"` e `"0"`. Um filtro "mostrar
+ * tudo" enviado como `onlyPending=false` era lido como `true`, e a tela de
+ * pendências escondia justificadas e remanejadas sem que ninguém percebesse.
+ */
+export const flagSchema = z
+  .union([z.boolean(), z.string()])
+  .transform((valor) =>
+    typeof valor === 'boolean'
+      ? valor
+      : ['true', '1', 'on', 'yes', 'sim'].includes(valor.trim().toLowerCase()),
+  );
+
 /** Data sem hora, no formato ISO — o domínio inteiro trabalha assim. */
 export const dateOnlySchema = z
   .string()
@@ -186,6 +202,10 @@ export const listHarvestsQuerySchema = z.object({
   collectorUserId: z.string().uuid().optional(),
   harvestTypeId: z.string().uuid().optional(),
   source: enumOf(HarvestSource).optional(),
+  /** Assina as URLs das fotos — só peça quando a tela for exibi-las. */
+  withPhotos: flagSchema.optional(),
+  /** Só as colheitas que têm foto anexada. */
+  onlyWithPhoto: flagSchema.optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(200).default(50),
 });
@@ -197,7 +217,7 @@ export const listHarvestsQuerySchema = z.object({
 export const complianceWeekQuerySchema = z.object({
   /** Segunda-feira da semana desejada. */
   weekStart: dateOnlySchema,
-  onlyPending: z.coerce.boolean().default(false),
+  onlyPending: flagSchema.default(false),
 });
 
 export const periodQuerySchema = z

@@ -19,7 +19,16 @@ const envSchema = z.object({
   SUPABASE_STORAGE_BUCKET: z.string().default('colheitas'),
 
   APP_TIMEZONE: z.string().default('America/Fortaleza'),
+  /** Hora da varredura diária que fecha o dia e cobra o que sobrou. */
   COMPLIANCE_CUTOFF_TIME: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).default('20:00'),
+  /**
+   * Tolerância, em minutos, depois do horário de CADA compromisso.
+   *
+   * A pessoa ainda está no supermercado às 15h31 de uma colheita das 15h30 —
+   * ela colhe primeiro e registra depois. Cobrar no minuto seguinte geraria
+   * mensagem para quem está trabalhando naquele instante.
+   */
+  COMPLIANCE_GRACE_MINUTES: z.coerce.number().int().min(0).max(1440).default(120),
   SCHEDULE_DISPATCH_TIME: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).default('06:30'),
   SCHEDULE_HORIZON_DAYS: z.coerce.number().int().min(1).max(120).default(14),
   SCHEDULER_ENABLED: z
@@ -27,9 +36,26 @@ const envSchema = z.object({
     .default('false')
     .transform((v) => v === 'true' || v === '1'),
 
-  NOTIFICATIONS_DRIVER: z.enum(['console', 'webhook']).default('console'),
+  NOTIFICATIONS_DRIVER: z.enum(['console', 'webhook', 'zapi']).default('console'),
   NOTIFICATIONS_WEBHOOK_URL: z.string().optional(),
   NOTIFICATIONS_WEBHOOK_TOKEN: z.string().optional(),
+  /**
+   * Pausa entre uma mensagem e a próxima ao drenar a fila.
+   *
+   * Provedores não-oficiais são bloqueados por padrão de comportamento, e
+   * disparar 30 mensagens parecidas em dois segundos é o padrão mais
+   * denunciável que existe. Um intervalo de alguns segundos custa menos de um
+   * minuto no disparo diário.
+   */
+  NOTIFICATIONS_THROTTLE_MS: z.coerce.number().int().min(0).max(60_000).default(3000),
+
+  // Z-API — painel da instância
+  ZAPI_INSTANCE_ID: z.string().optional(),
+  ZAPI_INSTANCE_TOKEN: z.string().optional(),
+  /** Token de segurança da CONTA, diferente do token da instância. */
+  ZAPI_CLIENT_TOKEN: z.string().optional(),
+  /** Pausa que o próprio Z-API aplica antes de entregar cada mensagem. */
+  ZAPI_DELAY_SECONDS: z.coerce.number().int().min(0).max(60).default(2),
   NOTIFICATIONS_DRY_RUN: z
     .string()
     .default('true')
@@ -57,6 +83,21 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
       'NOTIFICATIONS_DRIVER=webhook exige NOTIFICATIONS_WEBHOOK_URL. ' +
         'Aponte para o seu gateway de WhatsApp (Evolution API, n8n, etc.).',
     );
+  }
+
+  if (env.NOTIFICATIONS_DRIVER === 'zapi') {
+    const faltando: string[] = [];
+    if (!env.ZAPI_INSTANCE_ID) faltando.push('ZAPI_INSTANCE_ID');
+    if (!env.ZAPI_INSTANCE_TOKEN) faltando.push('ZAPI_INSTANCE_TOKEN');
+    if (!env.ZAPI_CLIENT_TOKEN) faltando.push('ZAPI_CLIENT_TOKEN');
+
+    if (faltando.length) {
+      throw new Error(
+        `NOTIFICATIONS_DRIVER=zapi exige: ${faltando.join(', ')}.\n` +
+          '  ID e token da instância ficam no painel da instância; o CLIENT_TOKEN é o token\n' +
+          '  de segurança da CONTA (Z-API > Segurança), e é outro valor.',
+      );
+    }
   }
 
   return {

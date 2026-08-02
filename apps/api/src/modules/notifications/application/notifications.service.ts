@@ -152,7 +152,11 @@ export class NotificationsService {
         recipientAddress: bucket.address,
         recipientName: bucket.name,
         body,
-        payload: { date: target.toString(), occurrenceIds: bucket.items.map((i) => i.occurrenceId) },
+        payload: {
+          date: target.toString(),
+          occurrenceIds: bucket.items.map((i) => i.occurrenceId),
+          templateVars: this.variaveis(bucket.greeting, target, bucket.items, linkApp),
+        },
         dedupeKey: `escala:${target.toString()}:${key}`,
       });
 
@@ -256,7 +260,11 @@ export class NotificationsService {
         recipientAddress: bucket.address,
         recipientName: bucket.name,
         body,
-        payload: { date: target.toString(), occurrenceIds: bucket.occurrenceIds },
+        payload: {
+          date: target.toString(),
+          occurrenceIds: bucket.occurrenceIds,
+          templateVars: this.variaveis(bucket.greeting, target, bucket.items, linkApp),
+        },
         dedupeKey: `pendencia:${target.toString()}:${key}`,
         occurrenceId: bucket.occurrenceIds[0] ?? null,
       });
@@ -414,8 +422,16 @@ export class NotificationsService {
 
     let sent = 0;
     let failed = 0;
+    const intervalo = this.config.get('NOTIFICATIONS_THROTTLE_MS', { infer: true });
 
-    for (const notification of pending) {
+    for (const [indice, notification] of pending.entries()) {
+      // Espaça os envios. Trinta mensagens parecidas em dois segundos é o
+      // padrão que mais atrai bloqueio em provedor não-oficial; alguns
+      // segundos entre elas custam menos de um minuto no disparo diário.
+      if (indice > 0 && intervalo > 0) {
+        await new Promise((resolve) => setTimeout(resolve, intervalo));
+      }
+
       const result = await this.gateway.send({
         to: notification.recipientAddress,
         body: notification.body,
@@ -602,12 +618,22 @@ export class NotificationsService {
     });
   }
 
-  /** Qual adaptador está plugado — a tela de configuração mostra isso. */
-  gatewayInfo() {
+  /**
+   * Qual adaptador está plugado e se a sessão está de pé.
+   *
+   * O estado da conexão importa porque provedores não-oficiais mantêm uma
+   * sessão do WhatsApp Web que cai sozinha. Sem isso na tela, a escala deixa
+   * de sair numa manhã e ninguém descobre até as instituições reclamarem.
+   */
+  async gatewayInfo() {
+    const status = this.gateway.status ? await this.gateway.status() : null;
+
     return {
       driver: this.gateway.name,
       supportsGroups: this.gateway.supportsGroups,
       dryRun: this.config.get('NOTIFICATIONS_DRY_RUN', { infer: true }),
+      connected: status?.connected ?? null,
+      connectionDetail: status?.detail ?? null,
     };
   }
 
@@ -674,6 +700,31 @@ export class NotificationsService {
 
     if (!template?.active || !template.body.trim()) return null;
     return renderTemplate(template.body, vars);
+  }
+
+  /**
+   * Lacunas numeradas para provedores que exigem template aprovado (Twilio,
+   * Cloud API da Meta).
+   *
+   * Um template da Meta é texto fixo com lacunas — mandar a mensagem inteira
+   * numa lacuna só seria reprovado na revisão. Por isso as partes viajam
+   * separadas no payload, além do texto já montado que os outros canais usam.
+   *
+   * A ordem é contrato com o template cadastrado no provedor:
+   *   {{1}} nome  {{2}} data  {{3}} lista de colheitas  {{4}} link
+   */
+  private variaveis(
+    nome: string,
+    data: DateOnly,
+    itens: ScheduleItem[],
+    link: string,
+  ): Record<string, string> {
+    return {
+      '1': nome,
+      '2': formatBr(data),
+      '3': this.itensComoTexto(itens),
+      '4': link,
+    };
   }
 
   /** Itens da escala como texto, para caber num placeholder {{itens}}. */

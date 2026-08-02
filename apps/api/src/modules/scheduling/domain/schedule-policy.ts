@@ -77,4 +77,39 @@ export class SchedulePolicy {
     if (date.isAfter(today)) return false;
     return DateOnly.timeIn(timeZone, now) >= cutoffTime;
   }
+
+  /**
+   * Este compromisso específico já está atrasado?
+   *
+   * Cobrar o dia inteiro de uma vez, como se fazia antes, acusava de atraso
+   * quem tem colheita marcada para as 16h numa varredura do meio-dia. Aqui a
+   * conta é por compromisso: só está atrasado quem já passou do próprio
+   * horário, mais uma tolerância.
+   *
+   * A tolerância existe porque a pessoa ainda está no supermercado às 15h31
+   * de uma colheita das 15h30 — ela colhe primeiro e registra depois.
+   */
+  static isOverdue(
+    date: DateOnly,
+    expectedTime: string,
+    graceMinutes: number,
+    timeZone: string,
+    now = new Date(),
+  ): boolean {
+    const today = DateOnly.todayIn(timeZone, now);
+
+    // Dia passado: o horário já não importa, o dia inteiro venceu.
+    if (date.isBefore(today)) return true;
+    if (date.isAfter(today)) return false;
+
+    const minutosAgora = SchedulePolicy.toMinutes(DateOnly.timeIn(timeZone, now));
+    const minutosPrevistos = SchedulePolicy.toMinutes(expectedTime);
+
+    return minutosAgora >= minutosPrevistos + graceMinutes;
+  }
+
+  private static toMinutes(hhmm: string): number {
+    const [h, m] = hhmm.split(':').map(Number);
+    return (h ?? 0) * 60 + (m ?? 0);
+  }
 }

@@ -23,6 +23,7 @@ export async function rodarVarredura(
     const resultado = await api<{
       date: string;
       markedPending: number;
+      stillOnTime: number;
       alertsQueued: number;
       skippedWithoutPhone: number;
     }>('/compliance/sweep', { method: 'POST', body: { date: data } });
@@ -33,8 +34,24 @@ export async function rodarVarredura(
       `${resultado.markedPending} pendência(s) marcada(s)`,
       `${resultado.alertsQueued} cobrança(s) na fila`,
     ];
+    if (resultado.stillOnTime > 0) {
+      partes.push(`${resultado.stillOnTime} ainda no prazo`);
+    }
     if (resultado.skippedWithoutPhone > 0) {
       partes.push(`${resultado.skippedWithoutPhone} sem telefone cadastrado`);
+    }
+
+    // Zero pode significar coisas bem diferentes, e sem distinguir a
+    // coordenação conclui que o sistema não funcionou.
+    if (resultado.markedPending === 0) {
+      return {
+        mensagem:
+          resultado.stillOnTime > 0
+            ? `Varredura de ${resultado.date}: nada atrasado ainda. ` +
+              `${resultado.stillOnTime} colheita(s) do dia com horário por vir.`
+            : `Varredura de ${resultado.date}: nada a cobrar — todas as colheitas ` +
+              'do dia já foram registradas, justificadas ou remanejadas.',
+      };
     }
 
     return { mensagem: `Varredura de ${resultado.date}: ${partes.join(', ')}.` };

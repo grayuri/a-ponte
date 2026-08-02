@@ -25,6 +25,8 @@ interface InfoGateway {
   driver: string;
   supportsGroups: boolean;
   dryRun: boolean;
+  connected: boolean | null;
+  connectionDetail: string | null;
 }
 
 export default async function PaginaNotificacoes({
@@ -78,9 +80,33 @@ export default async function PaginaNotificacoes({
           <strong>Enviando de verdade pelo canal “{gateway.driver}”.</strong>
           {gateway.supportsGroups
             ? ' Este canal suporta envio para grupos.'
-            : ' Este canal envia apenas mensagens individuais.'}
+            : ' Este canal envia apenas mensagens individuais — não posta em grupos do WhatsApp.'}
         </div>
       )}
+
+      {gateway.connected === false ? (
+        <div className="aviso" data-tipo="erro" role="alert">
+          <strong>A sessão do WhatsApp está fora do ar.</strong>{' '}
+          {gateway.connectionDetail ?? 'Motivo não informado pelo provedor.'} As mensagens
+          continuam sendo montadas e ficam na fila, mas <strong>nenhuma sai</strong> enquanto
+          isso não for resolvido.
+        </div>
+      ) : null}
+
+      {gateway.connected === true && gateway.connectionDetail ? (
+        <div className="aviso" data-tipo="atencao">
+          <strong>Sessão conectada, com ressalva.</strong> {gateway.connectionDetail}
+        </div>
+      ) : null}
+
+      {gateway.driver === 'z-api' ? (
+        <div className="aviso" data-tipo="info">
+          <strong>O Z-API mantém uma sessão do WhatsApp Web</strong>, que depende do celular do
+          número ficar online e pode cair sozinha. Confira este quadro antes de contar com o
+          disparo da manhã. As mensagens saem espaçadas de propósito — rajada é o padrão que
+          mais atrai bloqueio.
+        </div>
+      ) : null}
 
       <PainelDisparo hoje={hojeIso()} naFila={naFila} />
 

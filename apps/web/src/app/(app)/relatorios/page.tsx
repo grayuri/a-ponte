@@ -46,7 +46,10 @@ export default async function PaginaRelatorios({
     api<CalendarView>('/reports/calendar', { query: { year: ano, month: mes }, revalidate: 60 }),
   ]);
 
-  const urlCsv = `${process.env.NEXT_PUBLIC_API_URL}/reports/export.csv?from=${de}&to=${ate}`;
+  // Passa pelo servidor do Next, que anexa o token da sessão. Apontar o link
+  // direto para a API devolveria o JSON de "não autenticado": o navegador
+  // manda cookie, e a API espera cabeçalho Authorization.
+  const urlCsv = `/relatorios/exportar?de=${de}&ate=${ate}`;
 
   // Os filtros de período viajam junto ao trocar de página, senão a navegação
   // jogaria o usuário de volta para o ano inteiro.

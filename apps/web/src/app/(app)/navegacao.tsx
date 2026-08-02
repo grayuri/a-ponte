@@ -22,6 +22,7 @@ const ITENS: Item[] = [
   { href: '/minhas-colheitas', rotulo: 'Minhas colheitas', papeis: TODOS },
   { href: '/', rotulo: 'Painel', papeis: GESTAO_E_INSTITUICAO },
   { href: '/pendencias', rotulo: 'Pendências', papeis: GESTAO_E_INSTITUICAO },
+  { href: '/colheitas', rotulo: 'Colheitas', papeis: GESTAO_E_INSTITUICAO },
   { href: '/escala', rotulo: 'Escala', papeis: GESTAO_E_INSTITUICAO },
   { href: '/relatorios', rotulo: 'Relatórios', papeis: GESTAO_E_INSTITUICAO },
   { href: '/admin/usuarios', rotulo: 'Pessoas', papeis: GESTAO_E_INSTITUICAO },

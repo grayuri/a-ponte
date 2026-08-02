@@ -5,6 +5,7 @@ import { NotificationsService } from './application/notifications.service';
 import { MESSAGE_GATEWAY, type MessageGateway } from './domain/message-gateway.port';
 import { ConsoleMessageGateway } from './infrastructure/console-message.gateway';
 import { WebhookMessageGateway } from './infrastructure/webhook-message.gateway';
+import { ZapiMessageGateway } from './infrastructure/zapi-message.gateway';
 import { NotificationsController } from './interface/notifications.controller';
 
 /**
@@ -17,14 +18,21 @@ import { NotificationsController } from './interface/notifications.controller';
  */
 const gatewayProvider: Provider = {
   provide: MESSAGE_GATEWAY,
-  inject: [ConfigService, ConsoleMessageGateway, WebhookMessageGateway],
+  inject: [ConfigService, ConsoleMessageGateway, WebhookMessageGateway, ZapiMessageGateway],
   useFactory: (
     config: ConfigService<AppEnv, true>,
     console: ConsoleMessageGateway,
     webhook: WebhookMessageGateway,
+    zapi: ZapiMessageGateway,
   ): MessageGateway => {
-    const driver = config.get('NOTIFICATIONS_DRIVER', { infer: true });
-    return driver === 'webhook' ? webhook : console;
+    switch (config.get('NOTIFICATIONS_DRIVER', { infer: true })) {
+      case 'zapi':
+        return zapi;
+      case 'webhook':
+        return webhook;
+      default:
+        return console;
+    }
   },
 };
 
@@ -34,6 +42,7 @@ const gatewayProvider: Provider = {
     NotificationsService,
     ConsoleMessageGateway,
     WebhookMessageGateway,
+    ZapiMessageGateway,
     gatewayProvider,
   ],
   exports: [NotificationsService],
