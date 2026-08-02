@@ -58,11 +58,16 @@ async function main(): Promise<void> {
     for (const template of templates) {
       await prisma.notificationTemplate.upsert({
         where: { kind_channel: { kind: template.kind, channel: 'WHATSAPP' } },
-        create: { kind: template.kind, channel: 'WHATSAPP', body: template.body },
+        // INATIVOS de propósito. Estes são apenas um ponto de partida para
+        // quem quiser reescrever; enquanto estiverem inativos, valem os textos
+        // de fábrica em MessageTemplates, que são mais completos. Semear como
+        // ativo aposentaria silenciosamente o texto bom, e ninguém entenderia
+        // por que a mensagem saiu diferente do código.
+        create: { kind: template.kind, channel: 'WHATSAPP', body: template.body, active: false },
         update: {},
       });
     }
-    logger.log('Templates de mensagem garantidos.');
+    logger.log('Textos de exemplo garantidos (inativos — valem os textos de fábrica).');
 
     // ------------------------------------------- primeiro administrador
     const adminCount = await prisma.user.count({ where: { role: 'ADMIN' } });

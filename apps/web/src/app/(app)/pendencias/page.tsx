@@ -79,7 +79,7 @@ export default async function PaginaPendencias({
         >
           Próxima semana →
         </a>
-        {podeVarrer ? <AcoesPendencia /> : null}
+        {podeVarrer ? <AcoesPendencia hoje={hojeIso()} /> : null}
       </div>
 
       <div className="grade">

@@ -18,6 +18,7 @@
     "import:legacy": "ts-node -T src/modules/legacy-import/import-legacy.cli.ts",
     "schedule:materialize": "ts-node -T src/modules/scheduling/materialize.cli.ts",
     "notifications:dispatch": "ts-node -T src/modules/notifications/dispatch.cli.ts",
+    "compliance:sweep": "ts-node -T src/modules/compliance/sweep.cli.ts",
     "test": "jest"
   },
   "prisma": {

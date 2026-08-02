@@ -37,6 +37,17 @@ export async function rodarVarredura(
       partes.push(`${resultado.skippedWithoutPhone} sem telefone cadastrado`);
     }
 
+    // Zero pode significar "está tudo em dia" ou "ainda não deu a hora".
+    // Sem essa distinção, a coordenação acha que o sistema não funcionou.
+    if (resultado.markedPending === 0 && resultado.alertsQueued === 0) {
+      return {
+        mensagem:
+          `Varredura de ${resultado.date}: nada a cobrar. ` +
+          'Ou o horário de corte ainda não passou nesse dia, ou não há colheita ' +
+          'planejada sem registro — a tabela abaixo mostra qual é o caso.',
+      };
+    }
+
     return { mensagem: `Varredura de ${resultado.date}: ${partes.join(', ')}.` };
   } catch (error) {
     return {
