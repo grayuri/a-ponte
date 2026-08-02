@@ -13,6 +13,8 @@ import { SchedulePolicy } from '../../scheduling/domain/schedule-policy';
 export interface SweepResult {
   date: string;
   markedPending: number;
+  /** Colheitas do dia cujo horário ainda não chegou — não são atraso. */
+  stillOnTime: number;
   alertsQueued: number;
   skippedWithoutPhone: number;
 }
@@ -47,35 +49,47 @@ export class ComplianceService {
    */
   async sweep(date?: string): Promise<SweepResult> {
     const tz = this.config.get('APP_TIMEZONE', { infer: true });
-    const cutoff = this.config.get('COMPLIANCE_CUTOFF_TIME', { infer: true });
+    const tolerancia = this.config.get('COMPLIANCE_GRACE_MINUTES', { infer: true });
     const target = date ? DateOnly.parse(date) : DateOnly.todayIn(tz);
 
-    if (!SchedulePolicy.isPastCutoff(target, cutoff, tz)) {
-      this.logger.log(
-        `Ainda não deu ${cutoff} em ${target.toString()} — varredura adiada para não cobrar quem ainda tem prazo.`,
-      );
-      return { date: target.toString(), markedPending: 0, alertsQueued: 0, skippedWithoutPhone: 0 };
-    }
-
-    const { count } = await this.prisma.scheduleOccurrence.updateMany({
+    const candidatas = await this.prisma.scheduleOccurrence.findMany({
       where: {
         date: target.toUtcDate(),
         status: 'PLANEJADA',
         harvests: { none: {} },
       },
-      data: { status: 'PENDENTE' },
+      select: { id: true, expectedTime: true },
     });
+
+    // O atraso é por compromisso, não pelo dia: quem tem colheita marcada
+    // para as 16h não está atrasado numa varredura do meio-dia. Assim a
+    // varredura pode rodar a qualquer hora e cobrar só quem de fato passou
+    // do próprio horário.
+    const atrasadas = candidatas.filter((o) =>
+      SchedulePolicy.isOverdue(target, o.expectedTime, tolerancia, tz),
+    );
+
+    const aindaNoPrazo = candidatas.length - atrasadas.length;
+
+    const { count } = atrasadas.length
+      ? await this.prisma.scheduleOccurrence.updateMany({
+          where: { id: { in: atrasadas.map((o) => o.id) } },
+          data: { status: 'PENDENTE' },
+        })
+      : { count: 0 };
 
     const dispatch = await this.notifications.queuePendingAlerts(target.toString());
 
     this.logger.log(
       `Varredura de ${target.toString()}: ${count} pendência(s), ` +
+        `${aindaNoPrazo} ainda no prazo, ` +
         `${dispatch.queued} cobrança(s) na fila, ${dispatch.skipped} sem telefone cadastrado.`,
     );
 
     return {
       date: target.toString(),
       markedPending: count,
+      stillOnTime: aindaNoPrazo,
       alertsQueued: dispatch.queued,
       skippedWithoutPhone: dispatch.skipped,
     };

@@ -19,7 +19,16 @@ const envSchema = z.object({
   SUPABASE_STORAGE_BUCKET: z.string().default('colheitas'),
 
   APP_TIMEZONE: z.string().default('America/Fortaleza'),
+  /** Hora da varredura diária que fecha o dia e cobra o que sobrou. */
   COMPLIANCE_CUTOFF_TIME: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).default('20:00'),
+  /**
+   * Tolerância, em minutos, depois do horário de CADA compromisso.
+   *
+   * A pessoa ainda está no supermercado às 15h31 de uma colheita das 15h30 —
+   * ela colhe primeiro e registra depois. Cobrar no minuto seguinte geraria
+   * mensagem para quem está trabalhando naquele instante.
+   */
+  COMPLIANCE_GRACE_MINUTES: z.coerce.number().int().min(0).max(1440).default(120),
   SCHEDULE_DISPATCH_TIME: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).default('06:30'),
   SCHEDULE_HORIZON_DAYS: z.coerce.number().int().min(1).max(120).default(14),
   SCHEDULER_ENABLED: z
