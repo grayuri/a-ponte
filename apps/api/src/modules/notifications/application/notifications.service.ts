@@ -277,7 +277,7 @@ export class NotificationsService {
     if (!occurrence || !institution?.phone) return false;
 
     const date = DateOnly.fromJsDate(occurrence.date).toString();
-    const body = MessageTemplates.pedidoCobertura({
+    const body = MessageTemplates.coberturaAtribuida({
       nome: this.greetingFor(undefined, institution),
       data: date,
       storeName: occurrence.store.shiftLabel
@@ -298,6 +298,87 @@ export class NotificationsService {
       dedupeKey: `cobertura:${params.occurrenceId}:${params.institutionId}`,
       occurrenceId: params.occurrenceId,
     });
+  }
+
+  /**
+   * Resumo da semana fechada, para quem coordena.
+   *
+   * É o número que hoje só existe se alguém abrir a planilha e olhar: quantas
+   * colheitas foram cumpridas, quantas ficaram pendentes e quanto entrou.
+   */
+  async queueWeeklySummary(weekStart?: string): Promise<DispatchResultView> {
+    const tz = this.config.get('APP_TIMEZONE', { infer: true });
+    const referencia = weekStart
+      ? DateOnly.parse(weekStart)
+      : DateOnly.todayIn(tz).addDays(-7);
+
+    const inicio = referencia.startOfIsoWeek();
+    const fim = inicio.endOfIsoWeek();
+
+    const ocorrencias = await this.prisma.scheduleOccurrence.groupBy({
+      by: ['status'],
+      where: {
+        date: { gte: inicio.toUtcDate(), lte: fim.toUtcDate() },
+        status: { not: 'CANCELADA' },
+      },
+      _count: { _all: true },
+    });
+
+    const total = ocorrencias.reduce((acc, o) => acc + o._count._all, 0);
+
+    if (total === 0) {
+      return { date: inicio.toString(), queued: 0, skipped: 0, recipients: 0 };
+    }
+
+    const cumpridas = ocorrencias.find((o) => o.status === 'CUMPRIDA')?._count._all ?? 0;
+    const pendentes = ocorrencias.find((o) => o.status === 'PENDENTE')?._count._all ?? 0;
+
+    const peso = await this.prisma.harvest.aggregate({
+      where: { harvestedOn: { gte: inicio.toUtcDate(), lte: fim.toUtcDate() } },
+      _sum: { weightKg: true },
+    });
+
+    const destinatarios = await this.prisma.user.findMany({
+      where: { status: 'ATIVO', role: { in: ['ADMIN', 'COORDENADOR'] }, phone: { not: null } },
+      select: { id: true, fullName: true, phone: true },
+    });
+
+    let queued = 0;
+    const semTelefone = await this.prisma.user.count({
+      where: { status: 'ATIVO', role: { in: ['ADMIN', 'COORDENADOR'] }, phone: null },
+    });
+
+    for (const pessoa of destinatarios) {
+      const body = MessageTemplates.resumoSemanal({
+        nome: this.firstName(pessoa.fullName),
+        inicio: inicio.toString(),
+        fim: fim.toString(),
+        cumpridas,
+        total,
+        pendentes,
+        kg: Number(peso._sum.weightKg ?? 0),
+        linkApp: `${this.config.get('PUBLIC_WEB_URL', { infer: true })}/pendencias?semana=${inicio.toString()}`,
+      });
+
+      const criada = await this.enqueue({
+        kind: 'RESUMO_SEMANAL',
+        recipientUserId: pessoa.id,
+        recipientAddress: pessoa.phone!,
+        recipientName: pessoa.fullName,
+        body,
+        payload: { weekStart: inicio.toString(), total, cumpridas, pendentes },
+        dedupeKey: `resumo:${inicio.toString()}:${pessoa.id}`,
+      });
+
+      if (criada) queued += 1;
+    }
+
+    return {
+      date: inicio.toString(),
+      queued,
+      skipped: semTelefone,
+      recipients: destinatarios.length,
+    };
   }
 
   // ----------------------------------------------------------------- fila

@@ -46,6 +46,27 @@ export class SupabaseAdminService {
     return data.user.id;
   }
 
+  /**
+   * Confere uma senha sem abrir sessão de verdade.
+   *
+   * Usa um cliente separado, com a chave anônima, justamente para NÃO tocar na
+   * sessão do cliente admin — autenticar no cliente compartilhado trocaria o
+   * contexto de todo o backend pelo do usuário que está trocando a senha.
+   */
+  async verifyPassword(email: string, password: string): Promise<boolean> {
+    const conferidor = createClient(
+      this.config.get('SUPABASE_URL', { infer: true }),
+      this.config.get('SUPABASE_SERVICE_ROLE_KEY', { infer: true }),
+      { auth: { autoRefreshToken: false, persistSession: false } },
+    );
+
+    const { error } = await conferidor.auth.signInWithPassword({ email, password });
+    if (error) return false;
+
+    await conferidor.auth.signOut();
+    return true;
+  }
+
   async updatePassword(userId: string, password: string): Promise<void> {
     const { error } = await this.client.auth.admin.updateUserById(userId, { password });
     if (error) throw new BusinessRuleError(`Não foi possível trocar a senha: ${error.message}`);

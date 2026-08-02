@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ComplianceModule } from '../compliance/compliance.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { OutboxDispatcherModule } from '../outbox-dispatcher/outbox-dispatcher.module';
 import { SchedulingModule } from '../scheduling/scheduling.module';
 import { SchedulerService } from './scheduler.service';
 
@@ -18,6 +19,7 @@ import { SchedulerService } from './scheduler.service';
     SchedulingModule,
     NotificationsModule,
     ComplianceModule,
+    OutboxDispatcherModule,
   ],
   providers: [SchedulerService],
 })

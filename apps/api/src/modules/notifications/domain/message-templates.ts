@@ -70,8 +70,15 @@ export const MessageTemplates = {
     );
   },
 
-  /** Pedido de cobertura quando a instituição escalada não pode ir. */
-  pedidoCobertura(params: {
+  /**
+   * Aviso de cobertura atribuída.
+   *
+   * Note que NÃO é uma pergunta. Quando esta mensagem sai, a coordenação já
+   * decidiu e o remanejamento já está gravado — perguntar "vocês conseguem?"
+   * daria a entender que ainda dá para recusar sem avisar ninguém, e a loja
+   * ficaria sem colheita com todo mundo achando que estava resolvido.
+   */
+  coberturaAtribuida(params: {
     nome: string;
     data: string;
     storeName: string;
@@ -80,10 +87,13 @@ export const MessageTemplates = {
     linkApp: string;
   }): string {
     return (
-      `Olá, ${params.nome}! Precisamos de uma cobertura.\n\n` +
-      `A *${params.instituicaoOriginal}* não vai conseguir colher em ` +
-      `*${params.storeName}* no dia ${formatBr(params.data)}, às ${params.horario}.\n\n` +
-      `Sua instituição consegue assumir? Confirme pelo app:\n${params.linkApp}\n\n` +
+      `Olá, ${params.nome}! Vocês foram escalados para uma cobertura.\n\n` +
+      `A *${params.instituicaoOriginal}* não vai conseguir colher, e esta colheita passou ` +
+      `para vocês:\n\n` +
+      `• *${params.storeName}* — ${formatBr(params.data)}, às ${params.horario}\n\n` +
+      `Depois de colher, registre no app:\n${params.linkApp}\n\n` +
+      `Se não for possível assumir, avise a coordenação o quanto antes para a loja não ` +
+      `ficar sem ninguém.\n\n` +
       `_Projeto Colheita • Rede Colheita_`
     );
   },

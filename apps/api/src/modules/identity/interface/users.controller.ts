@@ -15,6 +15,11 @@ import { CurrentUser, Public, Roles } from './auth.guard';
 
 const resetPasswordSchema = z.object({ password: z.string().min(6) });
 
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Informe sua senha atual'),
+  newPassword: z.string().min(6, 'A nova senha precisa ter ao menos 6 caracteres'),
+});
+
 @Controller()
 export class UsersController {
   constructor(private readonly users: UsersService) {}
@@ -32,6 +37,16 @@ export class UsersController {
   @Get('auth/me')
   me(@CurrentUser() user: AuthenticatedUser) {
     return this.users.me(user.id);
+  }
+
+  /** Qualquer pessoa troca a própria senha, informando a atual. */
+  @Post('auth/change-password')
+  async changePassword(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(zodPipe(changePasswordSchema)) body: { currentPassword: string; newPassword: string },
+  ) {
+    await this.users.changeOwnPassword(user, body.currentPassword, body.newPassword);
+    return { ok: true };
   }
 
   @Get('users')
