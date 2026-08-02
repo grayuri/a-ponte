@@ -153,6 +153,8 @@ export class HarvestService {
       collectorUserId?: string;
       harvestTypeId?: string;
       source?: string;
+      withPhotos?: boolean;
+      onlyWithPhoto?: boolean;
       page: number;
       pageSize: number;
     },
@@ -162,6 +164,7 @@ export class HarvestService {
       ...(query.collectorUserId ? { collectorUserId: query.collectorUserId } : {}),
       ...(query.harvestTypeId ? { harvestTypeId: query.harvestTypeId } : {}),
       ...(query.source ? { source: query.source as never } : {}),
+      ...(query.onlyWithPhoto ? { photoPath: { not: null } } : {}),
     };
 
     if (query.from || query.to) {
@@ -190,8 +193,21 @@ export class HarvestService {
       this.prisma.harvest.count({ where }),
     ]);
 
+    // As fotos são a evidência de que a colheita aconteceu — o formulário
+    // antigo já pedia foto com a identificação da instituição visível. Só
+    // assina quando a tela pede, para não gastar ida ao Storage à toa.
+    const urls = query.withPhotos
+      ? await this.supabase.signedPhotoUrls(
+          rows.map((r) => r.photoPath).filter((p): p is string => Boolean(p)),
+        )
+      : new Map<string, string>();
+
     return {
-      items: rows.map((row) => this.toView(row)),
+      items: rows.map((row) => {
+        const view = this.toView(row);
+        if (row.photoPath) view.photoUrl = urls.get(row.photoPath) ?? null;
+        return view;
+      }),
       page: query.page,
       pageSize: query.pageSize,
       total,

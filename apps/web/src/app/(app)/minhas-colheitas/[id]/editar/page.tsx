@@ -8,6 +8,7 @@ import type {
 } from '@a-ponte/contracts';
 import { api } from '@/lib/api';
 import { formatarData, hojeIso } from '@/lib/format';
+import { Foto } from '../../../colheitas/foto';
 import { FormularioEdicao } from './formulario-edicao';
 
 export const metadata = { title: 'Editar colheita — Rede Colheita' };
@@ -26,6 +27,10 @@ export default async function PaginaEditarColheita({ params }: { params: { id: s
   const horasDesde = (Date.now() - new Date(colheita.createdAt).getTime()) / 36e5;
   const foraDaJanela = !ehCoordenacao && usuario.role === 'COLHEDOR' && horasDesde > 48;
 
+  // Registros importados guardam o link do Drive na observação, porque a foto
+  // original nunca passou pelo Storage deste sistema.
+  const linkDrive = /https?:\/\/\S*drive\.google\.com\S*/.exec(colheita.notes ?? '')?.[0] ?? null;
+
   return (
     <>
       <div className="cabecalho-pagina">
@@ -40,6 +45,27 @@ export default async function PaginaEditarColheita({ params }: { params: { id: s
         <div className="aviso" data-tipo="info">
           Este registro veio da planilha de 2026. Ele não tem colhedor com login associado — o
           nome que aparece é o texto original do formulário.
+          {linkDrive ? (
+            <>
+              {' '}
+              A foto ficou no Google Drive:{' '}
+              <a href={linkDrive} target="_blank" rel="noreferrer">
+                abrir imagem original
+              </a>
+              .
+            </>
+          ) : null}
+        </div>
+      ) : null}
+
+      {colheita.photoUrl ? (
+        <div className="card">
+          <div className="card-titulo">Foto da colheita</div>
+          <Foto
+            url={colheita.photoUrl}
+            legenda={`${colheita.storeName} — ${formatarData(colheita.harvestedOn)}`}
+          />
+          <p className="dica">Toque na imagem para ampliar.</p>
         </div>
       ) : null}
 

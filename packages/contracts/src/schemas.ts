@@ -186,6 +186,10 @@ export const listHarvestsQuerySchema = z.object({
   collectorUserId: z.string().uuid().optional(),
   harvestTypeId: z.string().uuid().optional(),
   source: enumOf(HarvestSource).optional(),
+  /** Assina as URLs das fotos — só peça quando a tela for exibi-las. */
+  withPhotos: z.coerce.boolean().optional(),
+  /** Só as colheitas que têm foto anexada. */
+  onlyWithPhoto: z.coerce.boolean().optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(200).default(50),
 });

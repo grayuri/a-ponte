@@ -600,6 +600,105 @@ button[data-variante='pequeno'],
   margin-top: 1.25rem;
 }
 
+/* ------------------------------------------------------- galeria de fotos */
+
+.galeria {
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: 1fr;
+}
+@media (min-width: 640px) {
+  .galeria {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  }
+}
+
+.galeria-item {
+  border: 1px solid var(--cinza-200);
+  border-radius: var(--raio);
+  overflow: hidden;
+  background: var(--branco);
+  display: flex;
+  flex-direction: column;
+}
+
+.galeria-foto {
+  display: block;
+  width: 100%;
+  /* Proporção fixa evita o layout pular conforme cada foto carrega. */
+  aspect-ratio: 4 / 3;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  min-height: 0;
+  background: var(--cinza-100);
+  cursor: zoom-in;
+  overflow: hidden;
+}
+
+.galeria-foto img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.galeria-foto--vazia {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--cinza-500);
+  font-size: 0.8rem;
+  cursor: default;
+}
+
+.galeria-corpo {
+  padding: 0.75rem;
+  flex: 1;
+}
+
+.galeria-topo {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.galeria-peso {
+  font-weight: 700;
+  color: var(--verde-700);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgb(0 0 0 / 0.9);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  cursor: zoom-out;
+}
+
+.lightbox img {
+  max-width: 100%;
+  max-height: 85vh;
+  object-fit: contain;
+  border-radius: var(--raio);
+}
+
+.lightbox p {
+  color: rgb(255 255 255 / 0.85);
+  font-size: 0.85rem;
+  margin: 0;
+  text-align: center;
+}
+
 /* --------------------------------------------------------------- paginação */
 
 .paginacao {
