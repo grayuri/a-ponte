@@ -75,6 +75,47 @@ export async function justificarAusencia(
   return { sucesso: 'Avisamos a coordenação. Esta colheita saiu da cobrança.' };
 }
 
+/** Corrige um registro já feito. Peso digitado errado é o caso mais comum. */
+export async function editarColheita(
+  _estado: EstadoFormulario,
+  formData: FormData,
+): Promise<EstadoFormulario> {
+  const id = String(formData.get('id') ?? '');
+
+  const corpo = {
+    storeId: String(formData.get('storeId') ?? ''),
+    institutionId: String(formData.get('institutionId') ?? ''),
+    harvestTypeId: String(formData.get('harvestTypeId') ?? ''),
+    harvestedOn: String(formData.get('harvestedOn') ?? ''),
+    harvestedAt: String(formData.get('harvestedAt') ?? '') || null,
+    weightKg: Number(String(formData.get('weightKg') ?? '0').replace(',', '.')),
+    mainFoods: String(formData.get('mainFoods') ?? '') || null,
+    notes: String(formData.get('notes') ?? '') || null,
+  };
+
+  try {
+    await api(`/harvests/${id}`, { method: 'PATCH', body: corpo });
+  } catch (error) {
+    return extrairErro(error);
+  }
+
+  revalidatePath('/minhas-colheitas');
+  revalidatePath('/pendencias');
+  return { sucesso: 'Colheita atualizada.' };
+}
+
+/**
+ * Excluir devolve a ocorrência para pendente — senão um lançamento errado,
+ * depois apagado, deixaria a escala marcada como cumprida para sempre.
+ */
+export async function excluirColheita(formData: FormData): Promise<void> {
+  await api(`/harvests/${String(formData.get('id') ?? '')}`, { method: 'DELETE' });
+
+  revalidatePath('/minhas-colheitas');
+  revalidatePath('/pendencias');
+  redirect('/minhas-colheitas?excluida=1');
+}
+
 /** Pede cobertura de outra instituição — o "quem vai?" que hoje é manual. */
 export async function pedirCobertura(
   _estado: EstadoFormulario,

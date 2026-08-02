@@ -3,17 +3,29 @@ import { ConfigService } from '@nestjs/config';
 import { NotificationKind, Prisma } from '@prisma/client';
 import type { DispatchResultView, NotificationLogView, Paginated } from '@a-ponte/contracts';
 import type { AppEnv } from '../../../config/env.config';
-import { DateOnly } from '../../../shared/domain/date-only';
+import { DateOnly, formatBr } from '../../../shared/domain/date-only';
 import { PrismaService } from '../../../shared/infrastructure/prisma.service';
 import {
   MESSAGE_GATEWAY,
   type MessageGateway,
 } from '../domain/message-gateway.port';
-import { MessageTemplates, type ScheduleItem } from '../domain/message-templates';
+import {
+  MessageTemplates,
+  renderTemplate,
+  type ScheduleItem,
+} from '../domain/message-templates';
 
 interface RecipientBucket {
   userId: string | null;
+  /** Nome completo, para o registro da mensagem. */
   name: string;
+  /**
+   * Como a mensagem começa. Guardado pronto porque a regra difere: gente é
+   * chamada pelo primeiro nome ("Olá, Arilton!"), instituição é chamada pelo
+   * nome inteiro. Decepar "CASA DE ABRAÃO" em "CASA" fica ridículo numa
+   * mensagem que centenas de pessoas leem todo dia.
+   */
+  greeting: string;
   address: string;
   items: ScheduleItem[];
 }
@@ -91,7 +103,15 @@ export class NotificationsService {
       }
 
       const key = person?.id ?? `inst:${institution?.id ?? occ.institutionId}`;
-      const bucket = buckets.get(key) ?? { userId: person?.id ?? null, name, address, items: [] };
+      const bucket =
+        buckets.get(key) ??
+        {
+          userId: person?.id ?? null,
+          name,
+          greeting: this.greetingFor(person?.fullName, institution),
+          address,
+          items: [],
+        };
 
       bucket.items.push({
         occurrenceId: occ.id,
@@ -112,12 +132,19 @@ export class NotificationsService {
     let queued = 0;
 
     for (const [key, bucket] of buckets) {
-      const body = MessageTemplates.escalaDoDia({
-        nome: this.firstName(bucket.name),
-        data: target.toString(),
-        itens: bucket.items,
-        linkApp,
-      });
+      const body =
+        (await this.textoPersonalizado('ESCALA_DO_DIA', {
+          nome: bucket.greeting,
+          data: formatBr(target),
+          itens: this.itensComoTexto(bucket.items),
+          link: linkApp,
+        })) ??
+        MessageTemplates.escalaDoDia({
+          nome: bucket.greeting,
+          data: target.toString(),
+          itens: bucket.items,
+          linkApp,
+        });
 
       const created = await this.enqueue({
         kind: 'ESCALA_DO_DIA',
@@ -180,7 +207,14 @@ export class NotificationsService {
       const key = person?.id ?? `inst:${institution?.id ?? occ.institutionId}`;
       const bucket =
         buckets.get(key) ??
-        { userId: person?.id ?? null, name, address, items: [], occurrenceIds: [] };
+        {
+          userId: person?.id ?? null,
+          name,
+          greeting: this.greetingFor(person?.fullName, institution),
+          address,
+          items: [],
+          occurrenceIds: [],
+        };
 
       bucket.items.push({
         occurrenceId: occ.id,
@@ -202,12 +236,19 @@ export class NotificationsService {
     let queued = 0;
 
     for (const [key, bucket] of buckets) {
-      const body = MessageTemplates.cobrancaPendencia({
-        nome: this.firstName(bucket.name),
-        data: target.toString(),
-        itens: bucket.items,
-        linkApp,
-      });
+      const body =
+        (await this.textoPersonalizado('COBRANCA_PENDENCIA', {
+          nome: bucket.greeting,
+          data: formatBr(target),
+          itens: this.itensComoTexto(bucket.items),
+          link: linkApp,
+        })) ??
+        MessageTemplates.cobrancaPendencia({
+          nome: bucket.greeting,
+          data: target.toString(),
+          itens: bucket.items,
+          linkApp,
+        });
 
       const created = await this.enqueue({
         kind: 'COBRANCA_PENDENCIA',
@@ -254,8 +295,8 @@ export class NotificationsService {
     if (!occurrence || !institution?.phone) return false;
 
     const date = DateOnly.fromJsDate(occurrence.date).toString();
-    const body = MessageTemplates.pedidoCobertura({
-      nome: this.firstName(institution.contactName ?? institution.name),
+    const body = MessageTemplates.coberturaAtribuida({
+      nome: this.greetingFor(undefined, institution),
       data: date,
       storeName: occurrence.store.shiftLabel
         ? `${occurrence.store.name} (${occurrence.store.shiftLabel})`
@@ -275,6 +316,87 @@ export class NotificationsService {
       dedupeKey: `cobertura:${params.occurrenceId}:${params.institutionId}`,
       occurrenceId: params.occurrenceId,
     });
+  }
+
+  /**
+   * Resumo da semana fechada, para quem coordena.
+   *
+   * É o número que hoje só existe se alguém abrir a planilha e olhar: quantas
+   * colheitas foram cumpridas, quantas ficaram pendentes e quanto entrou.
+   */
+  async queueWeeklySummary(weekStart?: string): Promise<DispatchResultView> {
+    const tz = this.config.get('APP_TIMEZONE', { infer: true });
+    const referencia = weekStart
+      ? DateOnly.parse(weekStart)
+      : DateOnly.todayIn(tz).addDays(-7);
+
+    const inicio = referencia.startOfIsoWeek();
+    const fim = inicio.endOfIsoWeek();
+
+    const ocorrencias = await this.prisma.scheduleOccurrence.groupBy({
+      by: ['status'],
+      where: {
+        date: { gte: inicio.toUtcDate(), lte: fim.toUtcDate() },
+        status: { not: 'CANCELADA' },
+      },
+      _count: { _all: true },
+    });
+
+    const total = ocorrencias.reduce((acc, o) => acc + o._count._all, 0);
+
+    if (total === 0) {
+      return { date: inicio.toString(), queued: 0, skipped: 0, recipients: 0 };
+    }
+
+    const cumpridas = ocorrencias.find((o) => o.status === 'CUMPRIDA')?._count._all ?? 0;
+    const pendentes = ocorrencias.find((o) => o.status === 'PENDENTE')?._count._all ?? 0;
+
+    const peso = await this.prisma.harvest.aggregate({
+      where: { harvestedOn: { gte: inicio.toUtcDate(), lte: fim.toUtcDate() } },
+      _sum: { weightKg: true },
+    });
+
+    const destinatarios = await this.prisma.user.findMany({
+      where: { status: 'ATIVO', role: { in: ['ADMIN', 'COORDENADOR'] }, phone: { not: null } },
+      select: { id: true, fullName: true, phone: true },
+    });
+
+    let queued = 0;
+    const semTelefone = await this.prisma.user.count({
+      where: { status: 'ATIVO', role: { in: ['ADMIN', 'COORDENADOR'] }, phone: null },
+    });
+
+    for (const pessoa of destinatarios) {
+      const body = MessageTemplates.resumoSemanal({
+        nome: this.firstName(pessoa.fullName),
+        inicio: inicio.toString(),
+        fim: fim.toString(),
+        cumpridas,
+        total,
+        pendentes,
+        kg: Number(peso._sum.weightKg ?? 0),
+        linkApp: `${this.config.get('PUBLIC_WEB_URL', { infer: true })}/pendencias?semana=${inicio.toString()}`,
+      });
+
+      const criada = await this.enqueue({
+        kind: 'RESUMO_SEMANAL',
+        recipientUserId: pessoa.id,
+        recipientAddress: pessoa.phone!,
+        recipientName: pessoa.fullName,
+        body,
+        payload: { weekStart: inicio.toString(), total, cumpridas, pendentes },
+        dedupeKey: `resumo:${inicio.toString()}:${pessoa.id}`,
+      });
+
+      if (criada) queued += 1;
+    }
+
+    return {
+      date: inicio.toString(),
+      queued,
+      skipped: semTelefone,
+      recipients: destinatarios.length,
+    };
   }
 
   // ----------------------------------------------------------------- fila
@@ -390,6 +512,96 @@ export class NotificationsService {
     };
   }
 
+  // ------------------------------------------------------------ templates
+
+  /**
+   * Os textos personalizados, com o de fábrica ao lado para comparação.
+   * Placeholders disponíveis: {{nome}}, {{data}}, {{itens}}, {{link}}.
+   */
+  async listTemplates() {
+    const salvos = await this.prisma.notificationTemplate.findMany({
+      where: { channel: 'WHATSAPP' },
+    });
+    const porTipo = new Map(salvos.map((t) => [t.kind, t]));
+
+    const exemploItens = this.itensComoTexto([
+      {
+        occurrenceId: '',
+        storeName: 'São Luiz - Abolição',
+        chainName: 'São Luiz',
+        expectedTime: '15:30',
+        timeLabel: null,
+        institutionName: 'Casa de Abraão',
+        harvestTypeLabel: null,
+      },
+    ]);
+
+    const vars = {
+      nome: 'Karen',
+      data: '02/08/2026',
+      itens: exemploItens,
+      link: `${this.config.get('PUBLIC_WEB_URL', { infer: true })}/minhas-colheitas`,
+    };
+
+    const padroes: Record<string, string> = {
+      ESCALA_DO_DIA: MessageTemplates.escalaDoDia({
+        nome: 'Karen',
+        data: '2026-08-02',
+        itens: [
+          {
+            occurrenceId: '',
+            storeName: 'São Luiz - Abolição',
+            chainName: 'São Luiz',
+            expectedTime: '15:30',
+            timeLabel: null,
+            institutionName: 'Casa de Abraão',
+            harvestTypeLabel: null,
+          },
+        ],
+        linkApp: vars.link,
+      }),
+      COBRANCA_PENDENCIA: MessageTemplates.cobrancaPendencia({
+        nome: 'Karen',
+        data: '2026-08-02',
+        itens: [
+          {
+            occurrenceId: '',
+            storeName: 'São Luiz - Abolição',
+            chainName: 'São Luiz',
+            expectedTime: '15:30',
+            timeLabel: null,
+            institutionName: 'Casa de Abraão',
+            harvestTypeLabel: null,
+          },
+        ],
+        linkApp: vars.link,
+      }),
+    };
+
+    return (['ESCALA_DO_DIA', 'COBRANCA_PENDENCIA'] as const).map((kind) => {
+      const salvo = porTipo.get(kind);
+      return {
+        kind,
+        body: salvo?.body ?? '',
+        active: salvo?.active ?? false,
+        textoPadrao: padroes[kind] ?? '',
+        previa:
+          salvo?.active && salvo.body.trim()
+            ? renderTemplate(salvo.body, vars)
+            : (padroes[kind] ?? ''),
+        usandoPersonalizado: Boolean(salvo?.active && salvo.body.trim()),
+      };
+    });
+  }
+
+  async saveTemplate(kind: NotificationKind, body: string, active: boolean) {
+    await this.prisma.notificationTemplate.upsert({
+      where: { kind_channel: { kind, channel: 'WHATSAPP' } },
+      create: { kind, channel: 'WHATSAPP', body, active },
+      update: { body, active },
+    });
+  }
+
   /** Qual adaptador está plugado — a tela de configuração mostra isso. */
   gatewayInfo() {
     return {
@@ -440,5 +652,54 @@ export class NotificationsService {
 
   private firstName(fullName: string): string {
     return fullName.trim().split(/\s+/)[0] ?? fullName;
+  }
+
+  /**
+   * Texto personalizado, quando a coordenação escreveu um.
+   *
+   * A tabela `notification_templates` existia sendo semeada e nunca lida — os
+   * textos que saíam eram sempre os de fábrica. Agora um template ativo no
+   * banco tem precedência, e o de fábrica é o fallback. Isso permite ajustar
+   * o tom das mensagens sem redeploy, que é o tipo de coisa que a coordenação
+   * quer mudar depois de ver a reação das pessoas nos primeiros dias.
+   */
+  private async textoPersonalizado(
+    kind: NotificationKind,
+    vars: Record<string, string | number>,
+  ): Promise<string | null> {
+    const template = await this.prisma.notificationTemplate.findUnique({
+      where: { kind_channel: { kind, channel: 'WHATSAPP' } },
+      select: { body: true, active: true },
+    });
+
+    if (!template?.active || !template.body.trim()) return null;
+    return renderTemplate(template.body, vars);
+  }
+
+  /** Itens da escala como texto, para caber num placeholder {{itens}}. */
+  private itensComoTexto(itens: ScheduleItem[]): string {
+    return itens
+      .map(
+        (item) =>
+          `• ${item.storeName} — ${item.timeLabel ?? item.expectedTime}\n` +
+          `   Destino: ${item.institutionName}`,
+      )
+      .join('\n');
+  }
+
+  /**
+   * Como abrir a mensagem. Pessoa vai pelo primeiro nome; instituição vai pelo
+   * nome inteiro, porque a primeira palavra dela raramente é um nome
+   * ("CASA DE ABRAÃO" viraria "CASA", "OBRA SOCIAL / CUIDA MAIS" viraria
+   * "OBRA"). Quando a instituição tem pessoa de contato, ela é gente e volta
+   * a valer o primeiro nome.
+   */
+  private greetingFor(
+    personName: string | undefined,
+    institution: { name: string; contactName?: string | null } | null | undefined,
+  ): string {
+    if (personName) return this.firstName(personName);
+    if (institution?.contactName) return this.firstName(institution.contactName);
+    return institution?.name ?? 'equipe';
   }
 }

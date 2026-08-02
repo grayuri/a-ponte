@@ -9,7 +9,7 @@ export const metadata = { title: 'Minhas colheitas — Rede Colheita' };
 export default async function PaginaMinhasColheitas({
   searchParams,
 }: {
-  searchParams: { data?: string; registrada?: string };
+  searchParams: { data?: string; registrada?: string; excluida?: string };
 }) {
   const hoje = hojeIso();
   const data = searchParams.data ?? hoje;
@@ -46,6 +46,13 @@ export default async function PaginaMinhasColheitas({
       {searchParams.registrada ? (
         <div className="aviso" data-tipo="sucesso" role="status">
           Colheita registrada. Obrigado!
+        </div>
+      ) : null}
+
+      {searchParams.excluida ? (
+        <div className="aviso" data-tipo="sucesso" role="status">
+          Registro excluído. Se ele estava ligado à escala, a colheita voltou a contar como
+          pendente.
         </div>
       ) : null}
 
@@ -109,6 +116,7 @@ export default async function PaginaMinhasColheitas({
                   <th>Loja</th>
                   <th>Destino</th>
                   <th className="numero">Kg</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -118,6 +126,9 @@ export default async function PaginaMinhasColheitas({
                     <td>{registro.storeName}</td>
                     <td>{registro.institutionName}</td>
                     <td className="numero">{formatarKg(registro.weightKg)}</td>
+                    <td>
+                      <Link href={`/minhas-colheitas/${registro.id}/editar`}>corrigir</Link>
+                    </td>
                   </tr>
                 ))}
               </tbody>

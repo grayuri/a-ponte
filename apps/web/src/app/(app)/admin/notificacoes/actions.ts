@@ -42,3 +42,37 @@ export async function drenarFila(): Promise<void> {
   await api('/notifications/flush', { method: 'POST' });
   revalidatePath('/admin/notificacoes');
 }
+
+export interface EstadoTemplate {
+  erro?: string;
+  sucesso?: string;
+}
+
+export async function salvarTemplate(
+  _estado: EstadoTemplate,
+  formData: FormData,
+): Promise<EstadoTemplate> {
+  const corpo = String(formData.get('body') ?? '').trim();
+  const ativo = formData.get('active') === 'on';
+
+  // Um texto ativo e vazio faria a mensagem sair em branco para 233 pessoas.
+  if (ativo && corpo.length < 20) {
+    return { erro: 'Escreva a mensagem antes de ativá-la (mínimo de 20 caracteres).' };
+  }
+
+  try {
+    await api('/notifications/templates', {
+      method: 'PUT',
+      body: { kind: String(formData.get('kind') ?? ''), body: corpo, active: ativo },
+    });
+  } catch (e) {
+    return erro(e);
+  }
+
+  revalidatePath('/admin/notificacoes');
+  return {
+    sucesso: ativo
+      ? 'Texto salvo e em uso a partir do próximo disparo.'
+      : 'Texto salvo. O sistema continua usando o padrão até você ativá-lo.',
+  };
+}

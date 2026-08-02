@@ -224,9 +224,10 @@ export class LegacyImportService {
       const weekdayLabel = cell(SCHEDULE.weekday);
       const institutionName = cell(SCHEDULE.institution);
 
-      // Cabeçalhos e faixas decorativas da planilha caem fora naturalmente.
-      if (storeName === 'Loja / Unidade') continue;
-      if (!storeName && !weekdayLabel && !institutionName) continue;
+      // Sem loja não é compromisso: é o banner do topo ou uma faixa decorativa.
+      // Descartar aqui mantém o relatório de pendências confiável — ele só
+      // lista o que a coordenação precisa mesmo olhar.
+      if (!storeName || storeName === 'Loja / Unidade') continue;
 
       report.rowsRead += 1;
 
@@ -234,11 +235,11 @@ export class LegacyImportService {
       // coluna de instituição ficou vazia). Não inventamos o destino: o
       // compromisso é reportado para a coordenação preencher no app, em vez
       // de sumir silenciosamente da escala.
-      if (!storeName || !weekdayLabel || !institutionName) {
+      if (!weekdayLabel || !institutionName) {
         report.skippedInvalid += 1;
         report.warnings.push(
           `Linha ${row.rowNumber}: compromisso incompleto na planilha e NÃO importado — ` +
-            `loja="${storeName ?? ''}", dia="${weekdayLabel ?? ''}", ` +
+            `loja="${storeName}", dia="${weekdayLabel ?? ''}", ` +
             `instituição="${institutionName ?? ''}", ` +
             `responsável="${cell(SCHEDULE.assignee) ?? ''}". Cadastre manualmente na tela de Escala.`,
         );

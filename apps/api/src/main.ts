@@ -23,7 +23,18 @@ async function bootstrap(): Promise<void> {
   app.enableShutdownHooks();
 
   const port = config.get('PORT', { infer: true });
-  await app.listen(port, '0.0.0.0');
+  const host = process.env.HOST;
+
+  if (host) {
+    await app.listen(port, host);
+  } else {
+    // Sem host explícito, o Node escuta em `::` com dual-stack, aceitando
+    // tanto IPv6 quanto IPv4. Isso importa: `localhost` resolve para ::1 e
+    // 127.0.0.1, e o fetch do Node tenta o ::1 primeiro. Amarrar em
+    // '0.0.0.0' faria o Next.js levar ECONNREFUSED ::1 mesmo com a API no ar.
+    // Containers que precisem de IPv4 puro definem HOST=0.0.0.0.
+    await app.listen(port);
+  }
 
   logger.log(`API da Rede Colheita ouvindo em http://localhost:${port}/${prefix}`);
   logger.log(`Fuso da operação: ${config.get('APP_TIMEZONE', { infer: true })}`);

@@ -234,6 +234,36 @@ export class UsersService {
     return this.toCurrentUserView(updated);
   }
 
+  /**
+   * A pessoa troca a própria senha.
+   *
+   * Exige a senha atual porque uma sessão aberta num celular emprestado, ou
+   * esquecido destravado no balcão da instituição, não deve bastar para tomar
+   * a conta de quem registra as colheitas.
+   */
+  async changeOwnPassword(
+    actor: AuthenticatedUser,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<void> {
+    if (currentPassword === newPassword) {
+      throw new BusinessRuleError('A nova senha precisa ser diferente da atual.');
+    }
+
+    const confere = await this.supabase.verifyPassword(actor.email, currentPassword);
+    if (!confere) {
+      throw new BusinessRuleError('A senha atual não confere.');
+    }
+
+    await this.supabase.updatePassword(actor.id, newPassword);
+    await this.audit.record({
+      actorId: actor.id,
+      action: 'SENHA_ALTERADA_PELO_PROPRIO',
+      entity: 'User',
+      entityId: actor.id,
+    });
+  }
+
   async resetPassword(actor: AuthenticatedUser, id: string, password: string): Promise<void> {
     const exists = await this.prisma.user.findUnique({ where: { id }, select: { id: true } });
     if (!exists) throw new NotFoundError('Usuário', id);

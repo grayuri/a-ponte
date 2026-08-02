@@ -9,6 +9,7 @@ import { IdentityModule } from './modules/identity/identity.module';
 import { SupabaseAuthGuard } from './modules/identity/interface/auth.guard';
 import { LegacyImportModule } from './modules/legacy-import/legacy-import.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { OutboxDispatcherModule } from './modules/outbox-dispatcher/outbox-dispatcher.module';
 import { ReportingModule } from './modules/reporting/reporting.module';
 import { SchedulerModule } from './modules/scheduler/scheduler.module';
 import { SchedulingModule } from './modules/scheduling/scheduling.module';
@@ -46,6 +47,7 @@ import { SharedModule } from './shared/shared.module';
     NotificationsModule,
     ComplianceModule,
     ReportingModule,
+    OutboxDispatcherModule,
     LegacyImportModule,
     SchedulerModule,
   ],

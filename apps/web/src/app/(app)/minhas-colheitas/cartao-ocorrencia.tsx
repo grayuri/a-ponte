@@ -83,6 +83,15 @@ export function CartaoOcorrencia({
                 Não vou poder ir
               </button>
             ) : null}
+
+            <Link
+              className="botao"
+              data-variante="secundario"
+              href={`/minhas-colheitas/${ocorrencia.id}/cobertura`}
+              style={{ minHeight: 36, padding: '0.4rem 0.7rem', fontSize: '0.82rem' }}
+            >
+              Passar para outra instituição
+            </Link>
           </div>
 
           {justificando ? (

@@ -27,6 +27,7 @@ const ITENS: Item[] = [
   { href: '/admin/usuarios', rotulo: 'Pessoas', papeis: GESTAO_E_INSTITUICAO },
   { href: '/admin/cadastros', rotulo: 'Cadastros', papeis: GESTAO },
   { href: '/admin/notificacoes', rotulo: 'Notificações', papeis: GESTAO },
+  { href: '/conta', rotulo: 'Minha conta', papeis: TODOS },
 ];
 
 export function Navegacao({ papel }: { papel: UserRole }) {

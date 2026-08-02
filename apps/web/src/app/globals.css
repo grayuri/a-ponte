@@ -600,6 +600,67 @@ button[data-variante='pequeno'],
   margin-top: 1.25rem;
 }
 
+/* --------------------------------------------------------------- paginação */
+
+.paginacao {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.85rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--cinza-100);
+}
+
+.paginacao-info {
+  font-size: 0.8rem;
+  color: var(--cinza-500);
+  font-variant-numeric: tabular-nums;
+}
+
+.paginacao-botoes {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.paginacao-botoes a,
+.paginacao-botoes span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* 36px de alvo de toque: menor que isso vira loteria no celular. */
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0 0.5rem;
+  border: 1px solid var(--cinza-300);
+  border-radius: var(--raio);
+  background: var(--branco);
+  color: var(--cinza-700);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.paginacao-botoes a:hover {
+  background: var(--cinza-100);
+  text-decoration: none;
+}
+
+.paginacao-botoes a[data-atual='true'] {
+  background: var(--verde-700);
+  border-color: var(--verde-700);
+  color: var(--branco);
+}
+
+.paginacao-botoes span[data-inativo='true'] {
+  border-color: transparent;
+  color: var(--cinza-300);
+  background: transparent;
+}
+
 .filtros {
   display: flex;
   gap: 0.6rem;

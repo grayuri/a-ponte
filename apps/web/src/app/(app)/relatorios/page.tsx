@@ -5,13 +5,23 @@ import type {
 } from '@a-ponte/contracts';
 import { api } from '@/lib/api';
 import { MESES, formatarKg, formatarNumero, hojeIso, primeiroDiaDoAno } from '@/lib/format';
+import { Paginacao, lerPagina, paginar } from '@/components/paginacao';
 
 export const metadata = { title: 'Relatórios — Rede Colheita' };
 
 export default async function PaginaRelatorios({
   searchParams,
 }: {
-  searchParams: { de?: string; ate?: string; ano?: string; mes?: string };
+  searchParams: {
+    de?: string;
+    ate?: string;
+    ano?: string;
+    mes?: string;
+    pj?: string;
+    pi?: string;
+    pc?: string;
+    pk?: string;
+  };
 }) {
   const hoje = hojeIso();
   const de = searchParams.de ?? primeiroDiaDoAno(hoje);
@@ -37,6 +47,21 @@ export default async function PaginaRelatorios({
   ]);
 
   const urlCsv = `${process.env.NEXT_PUBLIC_API_URL}/reports/export.csv?from=${de}&to=${ate}`;
+
+  // Os filtros de período viajam junto ao trocar de página, senão a navegação
+  // jogaria o usuário de volta para o ano inteiro.
+  const params = {
+    de: searchParams.de,
+    ate: searchParams.ate,
+    ano: searchParams.ano,
+    mes: searchParams.mes,
+    pj: searchParams.pj,
+    pi: searchParams.pi,
+    pc: searchParams.pc,
+    pk: searchParams.pk,
+  };
+
+  const pCalendario = paginar(calendario.rows, lerPagina(searchParams.pk));
 
   return (
     <>
@@ -74,14 +99,32 @@ export default async function PaginaRelatorios({
       </form>
 
       <div className="grade-2">
-        <Tabela titulo="Por loja / mercado" linhas={porLoja} />
-        <Tabela titulo="Por instituição" linhas={porInstituicao} />
+        <Tabela
+          titulo="Por loja / mercado"
+          linhas={porLoja}
+          parametro="pj"
+          pagina={lerPagina(searchParams.pj)}
+          parametrosAtuais={params}
+          rotulo="lojas"
+        />
+        <Tabela
+          titulo="Por instituição"
+          linhas={porInstituicao}
+          parametro="pi"
+          pagina={lerPagina(searchParams.pi)}
+          parametrosAtuais={params}
+          rotulo="instituições"
+        />
       </div>
 
       <div className="grade-2" style={{ marginTop: '1rem' }}>
         <Tabela
           titulo="Por pessoa"
           linhas={porColhedor}
+          parametro="pc"
+          pagina={lerPagina(searchParams.pc)}
+          parametrosAtuais={params}
+          rotulo="pessoas"
           vazio="Nenhum registro com colhedor identificado no período. Registros importados da planilha não têm login associado."
         />
 
@@ -118,7 +161,8 @@ export default async function PaginaRelatorios({
         {calendario.rows.length === 0 ? (
           <p className="dica">Sem registros neste mês.</p>
         ) : (
-          <div className="tabela-envolucro">
+          <>
+            <div className="tabela-envolucro">
             <table className="calendario">
               <thead>
                 <tr>
@@ -132,7 +176,7 @@ export default async function PaginaRelatorios({
                 </tr>
               </thead>
               <tbody>
-                {calendario.rows.map((linha) => (
+                {pCalendario.itens.map((linha) => (
                   <tr key={linha.storeId}>
                     <td>{linha.storeName}</td>
                     {linha.cells.map((celula) => (
@@ -155,7 +199,15 @@ export default async function PaginaRelatorios({
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>
+
+            <Paginacao
+              {...pCalendario}
+              parametro="pk"
+              parametrosAtuais={params}
+              rotulo="lojas"
+            />
+          </>
         )}
       </div>
 
@@ -175,13 +227,26 @@ export default async function PaginaRelatorios({
 function Tabela({
   titulo,
   linhas,
+  parametro,
+  pagina,
+  parametrosAtuais,
+  rotulo,
   vazio = 'Sem registros no período.',
 }: {
   titulo: string;
   linhas: RankingRowView[];
+  parametro: string;
+  pagina: number;
+  parametrosAtuais: Record<string, string | undefined>;
+  rotulo: string;
   vazio?: string;
 }) {
-  const total = linhas.reduce((acc, l) => acc + l.weightKg, 0);
+  // O TOTAL soma a lista INTEIRA, não a página. Um rodapé que muda conforme
+  // a página seria pior que não ter rodapé — daria a impressão de que a rede
+  // colheu menos do que colheu.
+  const totalKg = linhas.reduce((acc, l) => acc + l.weightKg, 0);
+  const totalColheitas = linhas.reduce((acc, l) => acc + l.harvestCount, 0);
+  const p = paginar(linhas, pagina);
 
   return (
     <div className="card">
@@ -189,39 +254,52 @@ function Tabela({
       {linhas.length === 0 ? (
         <p className="dica">{vazio}</p>
       ) : (
-        <div className="tabela-envolucro">
-          <table>
-            <thead>
-              <tr>
-                <th>Nome</th>
-                <th className="numero">Colheitas</th>
-                <th className="numero">Kg</th>
-              </tr>
-            </thead>
-            <tbody>
-              {linhas.map((linha) => (
-                <tr key={linha.id}>
-                  <td>{linha.label}</td>
-                  <td className="numero">{formatarNumero(linha.harvestCount)}</td>
-                  <td className="numero">{formatarNumero(linha.weightKg)}</td>
+        <>
+          <div className="tabela-envolucro">
+            <table>
+              <thead>
+                <tr>
+                  <th>Nome</th>
+                  <th className="numero">Colheitas</th>
+                  <th className="numero">Kg</th>
                 </tr>
-              ))}
-              <tr>
-                <td>
-                  <strong>TOTAL</strong>
-                </td>
-                <td className="numero">
-                  <strong>
-                    {formatarNumero(linhas.reduce((acc, l) => acc + l.harvestCount, 0))}
-                  </strong>
-                </td>
-                <td className="numero">
-                  <strong>{formatarNumero(total)}</strong>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {p.itens.map((linha) => (
+                  <tr key={linha.id}>
+                    <td>{linha.label}</td>
+                    <td className="numero">{formatarNumero(linha.harvestCount)}</td>
+                    <td className="numero">{formatarNumero(linha.weightKg)}</td>
+                  </tr>
+                ))}
+                <tr>
+                  <td>
+                    <strong>TOTAL</strong>
+                    {p.totalPaginas > 1 ? (
+                      <span style={{ color: 'var(--cinza-500)', fontWeight: 400 }}>
+                        {' '}
+                        (todas as páginas)
+                      </span>
+                    ) : null}
+                  </td>
+                  <td className="numero">
+                    <strong>{formatarNumero(totalColheitas)}</strong>
+                  </td>
+                  <td className="numero">
+                    <strong>{formatarNumero(totalKg)}</strong>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <Paginacao
+            {...p}
+            parametro={parametro}
+            parametrosAtuais={parametrosAtuais}
+            rotulo={rotulo}
+          />
+        </>
       )}
     </div>
   );

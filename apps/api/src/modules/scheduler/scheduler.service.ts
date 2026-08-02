@@ -5,6 +5,7 @@ import { CronJob } from 'cron';
 import type { AppEnv } from '../../config/env.config';
 import { ComplianceService } from '../compliance/application/compliance.service';
 import { NotificationsService } from '../notifications/application/notifications.service';
+import { OutboxDispatcherService } from '../outbox-dispatcher/application/outbox-dispatcher.service';
 import { OccurrenceMaterializerService } from '../scheduling/application/occurrence-materializer.service';
 
 /**
@@ -25,6 +26,7 @@ export class SchedulerService implements OnModuleInit {
     private readonly materializer: OccurrenceMaterializerService,
     private readonly notifications: NotificationsService,
     private readonly compliance: ComplianceService,
+    private readonly outbox: OutboxDispatcherService,
   ) {}
 
   onModuleInit(): void {
@@ -65,7 +67,22 @@ export class SchedulerService implements OnModuleInit {
 
     // A fila é drenada de dez em dez minutos para que uma falha momentânea do
     // provedor de WhatsApp não segure a mensagem até o dia seguinte.
+    //
+    // O outbox vai junto e ANTES: é ele que transforma um remanejamento em
+    // aviso para a instituição que assumiu. Drenar a fila primeiro deixaria
+    // esse aviso esperando mais dez minutos sem motivo.
     this.register('drenar-fila', '*/10 * * * *', tz, async () => {
+      await this.outbox.dispatchPending();
+      await this.notifications.flushQueue();
+    });
+
+    // Resumo da semana para a coordenação, segunda de manhã, sobre a semana
+    // que acabou de fechar.
+    this.register('resumo-semanal', `0 ${Number(dispatchTime.split(':')[0]) + 1} * * 1`, tz, async () => {
+      const resultado = await this.notifications.queueWeeklySummary();
+      this.logger.log(
+        `Resumo semanal: ${resultado.queued} mensagem(ns) para ${resultado.recipients} destinatário(s).`,
+      );
       await this.notifications.flushQueue();
     });
 

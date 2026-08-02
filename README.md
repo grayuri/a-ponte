@@ -103,11 +103,13 @@ npm run build --workspace @a-ponte/contracts
 
 ### 2. Configurar o ambiente
 
-Copie `.env.example` para `apps/api/.env` e `apps/web/.env.local`, preenchendo:
+Copie `.env.example` para `apps/api/.env` e `apps/web/.env.local`, preenchendo. Copie
+mesmo — não edite o `.env.example` com valores reais: ele é rastreado pelo git, e este
+repositório é público.
 
 | Variável | Onde achar |
 |---|---|
-| `DATABASE_URL` | Supabase → Project Settings → Database → Connection string |
+| `DATABASE_URL` | Project Settings → Database → Connection string → **Session pooler** |
 | `SUPABASE_URL` | Project Settings → API → Project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Project Settings → API → `service_role` (**nunca** no frontend) |
 | `SUPABASE_JWT_SECRET` | Project Settings → API → JWT Settings (opcional em projetos novos) |
@@ -124,7 +126,27 @@ Depois, rode `supabase/migrations/0001_security_and_storage.sql` no SQL Editor d
 Supabase. Ele liga RLS em tudo, cria os triggers de ciclo de vida da conta e o bucket
 privado de fotos.
 
+> **Se der `P1001: Can't reach database server`**, você está usando a string de conexão
+> direta (`db.SEUPROJETO.supabase.co`). Ela é IPv6-only desde 2024 e não funciona na
+> maioria das redes brasileiras — o erro parece problema de senha, mas é de rota. Troque
+> pelo **Session pooler** no painel do Supabase. Confirme com
+> `Resolve-DnsName db.SEUPROJETO.supabase.co`: se só aparecer registro `AAAA`, é isso.
+
 ### 4. Semear e criar o primeiro administrador
+
+No **PowerShell** (Windows) — o prefixo `VAR=valor comando` é sintaxe de shell Unix e não
+existe aqui:
+
+```powershell
+cd apps/api
+$env:ADMIN_EMAIL = 'voce@exemplo.com'
+$env:ADMIN_PASSWORD = 'umaSenhaBoa'
+$env:ADMIN_USERNAME = 'admin'
+$env:ADMIN_NAME = 'Seu Nome'
+npm run db:seed
+```
+
+No **bash** (Linux/macOS):
 
 ```bash
 cd apps/api
@@ -135,12 +157,17 @@ ADMIN_EMAIL=voce@exemplo.com ADMIN_PASSWORD=umaSenhaBoa ADMIN_USERNAME=admin npm
 
 ```bash
 cd apps/api
-npm run import:legacy -- "../../Contexts/RELATORIO COLHEITAS 2026 v5.xlsx" --all
+npx ts-node -T src/modules/legacy-import/import-legacy.cli.ts "../../Contexts/RELATORIO COLHEITAS 2026 v5.xlsx" --all
 ```
 
 - `(sem flag)` importa só o histórico de colheitas
 - `--schedule` importa só a aba ESCALA
 - `--all` importa os dois
+
+> Chame o `ts-node` direto, e não `npm run import:legacy -- ... --all`: o npm tem uma
+> flag própria chamada `--all` e a consome antes de repassar, então a aba ESCALA não
+> seria importada — sem erro nenhum, só silêncio. Para o modo padrão e o `--schedule`,
+> o `npm run import:legacy -- "arquivo.xlsx"` funciona normalmente.
 
 É seguro rodar de novo: cada linha vira um `externalRef` único, e a segunda execução
 conta as repetidas em vez de duplicar.
@@ -151,6 +178,23 @@ conta as repetidas em vez de duplicar.
 npm run dev:api    # http://localhost:3333/api
 npm run dev:web    # http://localhost:3000
 ```
+
+> **Se o Next.js acusar `fetch failed` / `ECONNREFUSED ::1:3333`**, a API não está no
+> ar — ou está escutando só em IPv4. `localhost` resolve para `::1` antes de `127.0.0.1`,
+> e o `fetch` do Node tenta o IPv6 primeiro. Deixe `HOST` vazio no `.env` para o servidor
+> escutar em `::` com dual-stack. Confirme com
+> `Get-NetTCPConnection -LocalPort 3333 -State Listen`: `LocalAddress` deve ser `::`.
+
+> **Em máquina com pouca RAM (4 GB ou menos)**, `npm run dev:api` roda o NestJS em modo
+> watch e recompila a cada mudança — junto com o `next dev` e o VS Code, isso derruba
+> tudo por falta de memória, com sintomas enganosos (`Fatal process out of memory`,
+> `Could not determine Node.js install directory`, processos Node pendurados a 0 MB).
+> Rode a API compilada, que é bem mais leve, e deixe o watch só para o frontend:
+>
+> ```bash
+> npm run build --workspace @a-ponte/api
+> node apps/api/dist/main.js
+> ```
 
 ---
 

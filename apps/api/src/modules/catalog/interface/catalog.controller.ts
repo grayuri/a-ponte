@@ -97,6 +97,13 @@ export class CatalogController {
     return this.catalog.updateInstitution(user.id, id, body);
   }
 
+  @Delete('institutions/:id')
+  @Roles('ADMIN', 'COORDENADOR')
+  async deactivateInstitution(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    await this.catalog.deactivateInstitution(user.id, id);
+    return { ok: true };
+  }
+
   @Get('harvest-types')
   listHarvestTypes(@Query('includeInactive') includeInactive?: string) {
     return this.catalog.listHarvestTypes(toBool(includeInactive));

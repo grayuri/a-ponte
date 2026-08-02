@@ -9,6 +9,7 @@ import {
   inicioDaSemana,
   somarDias,
 } from '@/lib/format';
+import { Paginacao, lerPagina, paginar } from '@/components/paginacao';
 import { AcoesPendencia } from './acoes-pendencia';
 
 export const metadata = { title: 'Pendências — Rede Colheita' };
@@ -16,7 +17,7 @@ export const metadata = { title: 'Pendências — Rede Colheita' };
 export default async function PaginaPendencias({
   searchParams,
 }: {
-  searchParams: { semana?: string; somentePendentes?: string };
+  searchParams: { semana?: string; somentePendentes?: string; pagina?: string };
 }) {
   const semana = searchParams.semana ?? inicioDaSemana(hojeIso());
   const somentePendentes = searchParams.somentePendentes === '1';
@@ -30,6 +31,7 @@ export default async function PaginaPendencias({
   ]);
 
   const podeVarrer = usuario.role === 'ADMIN' || usuario.role === 'COORDENADOR';
+  const pLinhas = paginar(dados.rows, lerPagina(searchParams.pagina));
 
   return (
     <>
@@ -122,6 +124,7 @@ export default async function PaginaPendencias({
               : 'Não há compromissos materializados nesta semana.'}
           </div>
         ) : (
+          <>
           <div className="tabela-envolucro">
             <table>
               <thead>
@@ -136,7 +139,7 @@ export default async function PaginaPendencias({
                 </tr>
               </thead>
               <tbody>
-                {dados.rows.map((linha) => (
+                {pLinhas.itens.map((linha) => (
                   <tr key={linha.occurrenceId}>
                     <td>{formatarData(linha.date)}</td>
                     <td>{linha.storeName}</td>
@@ -154,6 +157,17 @@ export default async function PaginaPendencias({
               </tbody>
             </table>
           </div>
+
+          <Paginacao
+            {...pLinhas}
+            parametro="pagina"
+            parametrosAtuais={{
+              semana: searchParams.semana,
+              somentePendentes: searchParams.somentePendentes,
+            }}
+            rotulo="compromissos"
+          />
+          </>
         )}
       </div>
     </>
