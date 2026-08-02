@@ -270,6 +270,48 @@ export class CatalogService {
     };
   }
 
+  /**
+   * Instituição também não se apaga: ela é o destino de colheitas históricas.
+   * A guarda é mais severa que a da loja — se a instituição sai, alguém precisa
+   * assumir as colheitas dela, senão a escala fica com um destino fantasma.
+   */
+  async deactivateInstitution(actorId: string, id: string): Promise<void> {
+    const existing = await this.prisma.institution.findUnique({
+      where: { id },
+      select: { id: true, name: true },
+    });
+    if (!existing) throw new NotFoundError('Instituição', id);
+
+    const [compromissos, membros] = await Promise.all([
+      this.prisma.scheduleCommitment.count({ where: { institutionId: id, status: 'ATIVO' } }),
+      this.prisma.user.count({ where: { institutionId: id, status: 'ATIVO' } }),
+    ]);
+
+    if (compromissos > 0) {
+      throw new BusinessRuleError(
+        `"${existing.name}" ainda responde por ${compromissos} compromisso(s) na escala. ` +
+          'Passe esses compromissos para outra instituição antes de desativá-la — ' +
+          'do contrário a escala ficaria com um destino sem dono.',
+      );
+    }
+
+    if (membros > 0) {
+      throw new BusinessRuleError(
+        `"${existing.name}" ainda tem ${membros} pessoa(s) ativa(s) vinculada(s). ` +
+          'Desative ou realoque essas pessoas primeiro.',
+      );
+    }
+
+    await this.prisma.institution.update({ where: { id }, data: { active: false } });
+    await this.audit.record({
+      actorId,
+      action: 'INSTITUICAO_DESATIVADA',
+      entity: 'Institution',
+      entityId: id,
+      before: { name: existing.name, active: true },
+    });
+  }
+
   // ---------------------------------------------------- tipos de colheita
 
   async listHarvestTypes(includeInactive = false): Promise<HarvestTypeView[]> {

@@ -6,6 +6,7 @@ import type {
 } from '@a-ponte/contracts';
 import { api } from '@/lib/api';
 import { formatarData } from '@/lib/format';
+import { POR_PAGINA, Paginacao, lerPagina } from '@/components/paginacao';
 import { FormularioUsuario } from './formulario-usuario';
 import { LinhaUsuario } from './linha-usuario';
 
@@ -23,7 +24,7 @@ export default async function PaginaUsuarios({
 }: {
   searchParams: { busca?: string; papel?: string; pagina?: string };
 }) {
-  const pagina = Number(searchParams.pagina ?? 1);
+  const pagina = lerPagina(searchParams.pagina);
 
   const [usuarioAtual, lista, instituicoes] = await Promise.all([
     api<CurrentUserView>('/auth/me', { revalidate: false }),
@@ -32,7 +33,7 @@ export default async function PaginaUsuarios({
         search: searchParams.busca,
         role: searchParams.papel,
         page: pagina,
-        pageSize: 50,
+        pageSize: POR_PAGINA,
       },
       revalidate: false,
     }),
@@ -94,9 +95,7 @@ export default async function PaginaUsuarios({
       </form>
 
       <div className="card">
-        <div className="card-titulo">
-          {lista.total} pessoa(s) · página {lista.page} de {lista.totalPages}
-        </div>
+        <div className="card-titulo">{lista.total} pessoa(s)</div>
 
         {lista.items.length === 0 ? (
           <div className="vazio">
@@ -104,6 +103,7 @@ export default async function PaginaUsuarios({
             Ajuste a busca ou cadastre a primeira pessoa acima.
           </div>
         ) : (
+          <>
           <div className="tabela-envolucro">
             <table>
               <thead>
@@ -137,6 +137,18 @@ export default async function PaginaUsuarios({
               </tbody>
             </table>
           </div>
+
+          <Paginacao
+            pagina={lista.page}
+            totalPaginas={lista.totalPages}
+            total={lista.total}
+            primeiro={(lista.page - 1) * lista.pageSize + 1}
+            ultimo={Math.min(lista.page * lista.pageSize, lista.total)}
+            parametro="pagina"
+            parametrosAtuais={{ busca: searchParams.busca, papel: searchParams.papel }}
+            rotulo="pessoas"
+          />
+          </>
         )}
       </div>
     </>

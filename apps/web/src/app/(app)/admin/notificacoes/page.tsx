@@ -1,6 +1,7 @@
 import type { NotificationLogView, Paginated } from '@a-ponte/contracts';
 import { api } from '@/lib/api';
 import { hojeIso } from '@/lib/format';
+import { POR_PAGINA, Paginacao, lerPagina } from '@/components/paginacao';
 import { PainelDisparo } from './painel-disparo';
 
 export const metadata = { title: 'Notificações — Rede Colheita' };
@@ -28,12 +29,19 @@ interface InfoGateway {
 export default async function PaginaNotificacoes({
   searchParams,
 }: {
-  searchParams: { tipo?: string; situacao?: string };
+  searchParams: { tipo?: string; situacao?: string; pagina?: string };
 }) {
+  const pagina = lerPagina(searchParams.pagina);
+
   const [gateway, log] = await Promise.all([
     api<InfoGateway>('/notifications/gateway', { revalidate: false }),
     api<Paginated<NotificationLogView>>('/notifications', {
-      query: { kind: searchParams.tipo, status: searchParams.situacao, pageSize: 50 },
+      query: {
+        kind: searchParams.tipo,
+        status: searchParams.situacao,
+        page: pagina,
+        pageSize: POR_PAGINA,
+      },
       revalidate: false,
     }),
   ]);
@@ -175,6 +183,17 @@ export default async function PaginaNotificacoes({
             </div>
           ))
         )}
+
+        <Paginacao
+          pagina={log.page}
+          totalPaginas={log.totalPages}
+          total={log.total}
+          primeiro={(log.page - 1) * log.pageSize + 1}
+          ultimo={Math.min(log.page * log.pageSize, log.total)}
+          parametro="pagina"
+          parametrosAtuais={{ tipo: searchParams.tipo, situacao: searchParams.situacao }}
+          rotulo="mensagens"
+        />
       </div>
     </>
   );
