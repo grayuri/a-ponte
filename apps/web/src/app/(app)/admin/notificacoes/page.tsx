@@ -2,6 +2,7 @@ import type { NotificationLogView, Paginated } from '@a-ponte/contracts';
 import { api } from '@/lib/api';
 import { hojeIso } from '@/lib/format';
 import { POR_PAGINA, Paginacao, lerPagina } from '@/components/paginacao';
+import { EditorTemplates, type TemplateView } from './editor-templates';
 import { PainelDisparo } from './painel-disparo';
 
 export const metadata = { title: 'Notificações — Rede Colheita' };
@@ -33,8 +34,9 @@ export default async function PaginaNotificacoes({
 }) {
   const pagina = lerPagina(searchParams.pagina);
 
-  const [gateway, log] = await Promise.all([
+  const [gateway, templates, log] = await Promise.all([
     api<InfoGateway>('/notifications/gateway', { revalidate: false }),
+    api<TemplateView[]>('/notifications/templates', { revalidate: false }),
     api<Paginated<NotificationLogView>>('/notifications', {
       query: {
         kind: searchParams.tipo,
@@ -81,6 +83,8 @@ export default async function PaginaNotificacoes({
       )}
 
       <PainelDisparo hoje={hojeIso()} naFila={naFila} />
+
+      <EditorTemplates templates={templates} />
 
       <form className="filtros" method="get" style={{ marginTop: '1.5rem' }}>
         <div className="campo">

@@ -1,9 +1,15 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Post, Put, Query } from '@nestjs/common';
 import { dispatchScheduleSchema, notificationLogQuerySchema } from '@a-ponte/contracts';
 import { z } from 'zod';
 import { zodPipe } from '../../../shared/interface/zod-validation.pipe';
 import { Roles } from '../../identity/interface/auth.guard';
 import { NotificationsService } from '../application/notifications.service';
+
+const templateSchema = z.object({
+  kind: z.enum(['ESCALA_DO_DIA', 'COBRANCA_PENDENCIA']),
+  body: z.string().max(2000),
+  active: z.boolean(),
+});
 
 @Controller('notifications')
 @Roles('ADMIN', 'COORDENADOR')
@@ -45,5 +51,18 @@ export class NotificationsController {
   @Post('flush')
   flush() {
     return this.notifications.flushQueue();
+  }
+
+  @Get('templates')
+  listTemplates() {
+    return this.notifications.listTemplates();
+  }
+
+  @Put('templates')
+  async saveTemplate(
+    @Body(zodPipe(templateSchema)) body: z.infer<typeof templateSchema>,
+  ) {
+    await this.notifications.saveTemplate(body.kind as never, body.body, body.active);
+    return { ok: true };
   }
 }

@@ -3,13 +3,17 @@ import { ConfigService } from '@nestjs/config';
 import { NotificationKind, Prisma } from '@prisma/client';
 import type { DispatchResultView, NotificationLogView, Paginated } from '@a-ponte/contracts';
 import type { AppEnv } from '../../../config/env.config';
-import { DateOnly } from '../../../shared/domain/date-only';
+import { DateOnly, formatBr } from '../../../shared/domain/date-only';
 import { PrismaService } from '../../../shared/infrastructure/prisma.service';
 import {
   MESSAGE_GATEWAY,
   type MessageGateway,
 } from '../domain/message-gateway.port';
-import { MessageTemplates, type ScheduleItem } from '../domain/message-templates';
+import {
+  MessageTemplates,
+  renderTemplate,
+  type ScheduleItem,
+} from '../domain/message-templates';
 
 interface RecipientBucket {
   userId: string | null;
@@ -128,12 +132,19 @@ export class NotificationsService {
     let queued = 0;
 
     for (const [key, bucket] of buckets) {
-      const body = MessageTemplates.escalaDoDia({
-        nome: bucket.greeting,
-        data: target.toString(),
-        itens: bucket.items,
-        linkApp,
-      });
+      const body =
+        (await this.textoPersonalizado('ESCALA_DO_DIA', {
+          nome: bucket.greeting,
+          data: formatBr(target),
+          itens: this.itensComoTexto(bucket.items),
+          link: linkApp,
+        })) ??
+        MessageTemplates.escalaDoDia({
+          nome: bucket.greeting,
+          data: target.toString(),
+          itens: bucket.items,
+          linkApp,
+        });
 
       const created = await this.enqueue({
         kind: 'ESCALA_DO_DIA',
@@ -225,12 +236,19 @@ export class NotificationsService {
     let queued = 0;
 
     for (const [key, bucket] of buckets) {
-      const body = MessageTemplates.cobrancaPendencia({
-        nome: bucket.greeting,
-        data: target.toString(),
-        itens: bucket.items,
-        linkApp,
-      });
+      const body =
+        (await this.textoPersonalizado('COBRANCA_PENDENCIA', {
+          nome: bucket.greeting,
+          data: formatBr(target),
+          itens: this.itensComoTexto(bucket.items),
+          link: linkApp,
+        })) ??
+        MessageTemplates.cobrancaPendencia({
+          nome: bucket.greeting,
+          data: target.toString(),
+          itens: bucket.items,
+          linkApp,
+        });
 
       const created = await this.enqueue({
         kind: 'COBRANCA_PENDENCIA',
@@ -494,6 +512,96 @@ export class NotificationsService {
     };
   }
 
+  // ------------------------------------------------------------ templates
+
+  /**
+   * Os textos personalizados, com o de fábrica ao lado para comparação.
+   * Placeholders disponíveis: {{nome}}, {{data}}, {{itens}}, {{link}}.
+   */
+  async listTemplates() {
+    const salvos = await this.prisma.notificationTemplate.findMany({
+      where: { channel: 'WHATSAPP' },
+    });
+    const porTipo = new Map(salvos.map((t) => [t.kind, t]));
+
+    const exemploItens = this.itensComoTexto([
+      {
+        occurrenceId: '',
+        storeName: 'São Luiz - Abolição',
+        chainName: 'São Luiz',
+        expectedTime: '15:30',
+        timeLabel: null,
+        institutionName: 'Casa de Abraão',
+        harvestTypeLabel: null,
+      },
+    ]);
+
+    const vars = {
+      nome: 'Karen',
+      data: '02/08/2026',
+      itens: exemploItens,
+      link: `${this.config.get('PUBLIC_WEB_URL', { infer: true })}/minhas-colheitas`,
+    };
+
+    const padroes: Record<string, string> = {
+      ESCALA_DO_DIA: MessageTemplates.escalaDoDia({
+        nome: 'Karen',
+        data: '2026-08-02',
+        itens: [
+          {
+            occurrenceId: '',
+            storeName: 'São Luiz - Abolição',
+            chainName: 'São Luiz',
+            expectedTime: '15:30',
+            timeLabel: null,
+            institutionName: 'Casa de Abraão',
+            harvestTypeLabel: null,
+          },
+        ],
+        linkApp: vars.link,
+      }),
+      COBRANCA_PENDENCIA: MessageTemplates.cobrancaPendencia({
+        nome: 'Karen',
+        data: '2026-08-02',
+        itens: [
+          {
+            occurrenceId: '',
+            storeName: 'São Luiz - Abolição',
+            chainName: 'São Luiz',
+            expectedTime: '15:30',
+            timeLabel: null,
+            institutionName: 'Casa de Abraão',
+            harvestTypeLabel: null,
+          },
+        ],
+        linkApp: vars.link,
+      }),
+    };
+
+    return (['ESCALA_DO_DIA', 'COBRANCA_PENDENCIA'] as const).map((kind) => {
+      const salvo = porTipo.get(kind);
+      return {
+        kind,
+        body: salvo?.body ?? '',
+        active: salvo?.active ?? false,
+        textoPadrao: padroes[kind] ?? '',
+        previa:
+          salvo?.active && salvo.body.trim()
+            ? renderTemplate(salvo.body, vars)
+            : (padroes[kind] ?? ''),
+        usandoPersonalizado: Boolean(salvo?.active && salvo.body.trim()),
+      };
+    });
+  }
+
+  async saveTemplate(kind: NotificationKind, body: string, active: boolean) {
+    await this.prisma.notificationTemplate.upsert({
+      where: { kind_channel: { kind, channel: 'WHATSAPP' } },
+      create: { kind, channel: 'WHATSAPP', body, active },
+      update: { body, active },
+    });
+  }
+
   /** Qual adaptador está plugado — a tela de configuração mostra isso. */
   gatewayInfo() {
     return {
@@ -544,6 +652,39 @@ export class NotificationsService {
 
   private firstName(fullName: string): string {
     return fullName.trim().split(/\s+/)[0] ?? fullName;
+  }
+
+  /**
+   * Texto personalizado, quando a coordenação escreveu um.
+   *
+   * A tabela `notification_templates` existia sendo semeada e nunca lida — os
+   * textos que saíam eram sempre os de fábrica. Agora um template ativo no
+   * banco tem precedência, e o de fábrica é o fallback. Isso permite ajustar
+   * o tom das mensagens sem redeploy, que é o tipo de coisa que a coordenação
+   * quer mudar depois de ver a reação das pessoas nos primeiros dias.
+   */
+  private async textoPersonalizado(
+    kind: NotificationKind,
+    vars: Record<string, string | number>,
+  ): Promise<string | null> {
+    const template = await this.prisma.notificationTemplate.findUnique({
+      where: { kind_channel: { kind, channel: 'WHATSAPP' } },
+      select: { body: true, active: true },
+    });
+
+    if (!template?.active || !template.body.trim()) return null;
+    return renderTemplate(template.body, vars);
+  }
+
+  /** Itens da escala como texto, para caber num placeholder {{itens}}. */
+  private itensComoTexto(itens: ScheduleItem[]): string {
+    return itens
+      .map(
+        (item) =>
+          `• ${item.storeName} — ${item.timeLabel ?? item.expectedTime}\n` +
+          `   Destino: ${item.institutionName}`,
+      )
+      .join('\n');
   }
 
   /**
