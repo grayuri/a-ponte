@@ -179,6 +179,23 @@ npm run dev:api    # http://localhost:3333/api
 npm run dev:web    # http://localhost:3000
 ```
 
+> **Se o Next.js acusar `fetch failed` / `ECONNREFUSED ::1:3333`**, a API não está no
+> ar — ou está escutando só em IPv4. `localhost` resolve para `::1` antes de `127.0.0.1`,
+> e o `fetch` do Node tenta o IPv6 primeiro. Deixe `HOST` vazio no `.env` para o servidor
+> escutar em `::` com dual-stack. Confirme com
+> `Get-NetTCPConnection -LocalPort 3333 -State Listen`: `LocalAddress` deve ser `::`.
+
+> **Em máquina com pouca RAM (4 GB ou menos)**, `npm run dev:api` roda o NestJS em modo
+> watch e recompila a cada mudança — junto com o `next dev` e o VS Code, isso derruba
+> tudo por falta de memória, com sintomas enganosos (`Fatal process out of memory`,
+> `Could not determine Node.js install directory`, processos Node pendurados a 0 MB).
+> Rode a API compilada, que é bem mais leve, e deixe o watch só para o frontend:
+>
+> ```bash
+> npm run build --workspace @a-ponte/api
+> node apps/api/dist/main.js
+> ```
+
 ---
 
 ## Sobre a importação: nenhuma conciliação de nomes
