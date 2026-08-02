@@ -3,6 +3,10 @@
 Digitalização da planilha **RELATORIO COLHEITAS 2026**: escala, registro de colheita,
 cobrança automática de preenchimento e painéis de gestão.
 
+> Chegando agora ou trocando de máquina? Leia **[CONTEXTO.md](CONTEXTO.md)** primeiro:
+> traz o porquê das decisões, o estado atual dos dados, e as armadilhas de ambiente que
+> já custaram tempo (IPv6 do Supabase, limite de conexões, dual-stack, cache do Next).
+
 O sistema resolve as duas dores que motivaram o projeto:
 
 1. **Lembrar a escala.** Todo dia alguém digita nos grupos quem colhe onde. Agora o
