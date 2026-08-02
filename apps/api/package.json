@@ -16,6 +16,8 @@
     "db:studio": "prisma studio",
     "db:seed": "ts-node -T src/modules/legacy-import/seed.ts",
     "import:legacy": "ts-node -T src/modules/legacy-import/import-legacy.cli.ts",
+    "schedule:materialize": "ts-node -T src/modules/scheduling/materialize.cli.ts",
+    "notifications:dispatch": "ts-node -T src/modules/notifications/dispatch.cli.ts",
     "test": "jest"
   },
   "prisma": {

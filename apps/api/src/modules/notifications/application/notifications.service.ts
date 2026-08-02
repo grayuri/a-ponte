@@ -13,7 +13,15 @@ import { MessageTemplates, type ScheduleItem } from '../domain/message-templates
 
 interface RecipientBucket {
   userId: string | null;
+  /** Nome completo, para o registro da mensagem. */
   name: string;
+  /**
+   * Como a mensagem começa. Guardado pronto porque a regra difere: gente é
+   * chamada pelo primeiro nome ("Olá, Arilton!"), instituição é chamada pelo
+   * nome inteiro. Decepar "CASA DE ABRAÃO" em "CASA" fica ridículo numa
+   * mensagem que centenas de pessoas leem todo dia.
+   */
+  greeting: string;
   address: string;
   items: ScheduleItem[];
 }
@@ -91,7 +99,15 @@ export class NotificationsService {
       }
 
       const key = person?.id ?? `inst:${institution?.id ?? occ.institutionId}`;
-      const bucket = buckets.get(key) ?? { userId: person?.id ?? null, name, address, items: [] };
+      const bucket =
+        buckets.get(key) ??
+        {
+          userId: person?.id ?? null,
+          name,
+          greeting: this.greetingFor(person?.fullName, institution),
+          address,
+          items: [],
+        };
 
       bucket.items.push({
         occurrenceId: occ.id,
@@ -113,7 +129,7 @@ export class NotificationsService {
 
     for (const [key, bucket] of buckets) {
       const body = MessageTemplates.escalaDoDia({
-        nome: this.firstName(bucket.name),
+        nome: bucket.greeting,
         data: target.toString(),
         itens: bucket.items,
         linkApp,
@@ -180,7 +196,14 @@ export class NotificationsService {
       const key = person?.id ?? `inst:${institution?.id ?? occ.institutionId}`;
       const bucket =
         buckets.get(key) ??
-        { userId: person?.id ?? null, name, address, items: [], occurrenceIds: [] };
+        {
+          userId: person?.id ?? null,
+          name,
+          greeting: this.greetingFor(person?.fullName, institution),
+          address,
+          items: [],
+          occurrenceIds: [],
+        };
 
       bucket.items.push({
         occurrenceId: occ.id,
@@ -203,7 +226,7 @@ export class NotificationsService {
 
     for (const [key, bucket] of buckets) {
       const body = MessageTemplates.cobrancaPendencia({
-        nome: this.firstName(bucket.name),
+        nome: bucket.greeting,
         data: target.toString(),
         itens: bucket.items,
         linkApp,
@@ -255,7 +278,7 @@ export class NotificationsService {
 
     const date = DateOnly.fromJsDate(occurrence.date).toString();
     const body = MessageTemplates.pedidoCobertura({
-      nome: this.firstName(institution.contactName ?? institution.name),
+      nome: this.greetingFor(undefined, institution),
       data: date,
       storeName: occurrence.store.shiftLabel
         ? `${occurrence.store.name} (${occurrence.store.shiftLabel})`
@@ -440,5 +463,21 @@ export class NotificationsService {
 
   private firstName(fullName: string): string {
     return fullName.trim().split(/\s+/)[0] ?? fullName;
+  }
+
+  /**
+   * Como abrir a mensagem. Pessoa vai pelo primeiro nome; instituição vai pelo
+   * nome inteiro, porque a primeira palavra dela raramente é um nome
+   * ("CASA DE ABRAÃO" viraria "CASA", "OBRA SOCIAL / CUIDA MAIS" viraria
+   * "OBRA"). Quando a instituição tem pessoa de contato, ela é gente e volta
+   * a valer o primeiro nome.
+   */
+  private greetingFor(
+    personName: string | undefined,
+    institution: { name: string; contactName?: string | null } | null | undefined,
+  ): string {
+    if (personName) return this.firstName(personName);
+    if (institution?.contactName) return this.firstName(institution.contactName);
+    return institution?.name ?? 'equipe';
   }
 }
