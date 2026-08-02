@@ -78,9 +78,20 @@ export default async function PaginaNotificacoes({
           <strong>Enviando de verdade pelo canal “{gateway.driver}”.</strong>
           {gateway.supportsGroups
             ? ' Este canal suporta envio para grupos.'
-            : ' Este canal envia apenas mensagens individuais.'}
+            : ' Este canal envia apenas mensagens individuais — não posta em grupos do WhatsApp.'}
         </div>
       )}
+
+      {gateway.driver === 'twilio' ? (
+        <div className="aviso" data-tipo="atencao">
+          <strong>Twilio: atenção à janela de 24 horas.</strong> Fora de 24h desde a última
+          mensagem que a pessoa enviou, a Meta só permite <strong>template aprovado</strong>. A
+          escala das 6h30 cai exatamente nesse caso. Cadastre os templates no Twilio (Messaging →
+          Content Template Builder), aprove na Meta e preencha os Content SIDs no{' '}
+          <code>.env</code> da API. Sem isso, o envio falha com o erro 63016 — que aparece aqui
+          na lista, explicado.
+        </div>
+      ) : null}
 
       <PainelDisparo hoje={hojeIso()} naFila={naFila} />
 

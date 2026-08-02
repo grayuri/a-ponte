@@ -228,6 +228,31 @@ Como você pediu, o provedor fica em aberto. O domínio conhece só a porta
 |---|---|
 | `console` (padrão) | Monta e grava a mensagem, **não envia nada**. Aparece no log e na tela de Notificações |
 | `webhook` | Faz `POST {to, body, metadata}` em `NOTIFICATIONS_WEBHOOK_URL` |
+| `twilio` | API oficial do WhatsApp via Twilio |
+
+### Twilio — o que muda na operação
+
+Duas regras da Meta, herdadas por qualquer provedor oficial:
+
+**Não existe envio para grupo.** A API oficial é só 1:1. O disparo já agrupa por pessoa,
+então nada quebra — mas postar a escala num grupo, como se faz hoje, não se traduz.
+
+**Janela de 24 horas.** Fora de 24h desde a última mensagem que a *pessoa* enviou, só se
+pode mandar template aprovado pela Meta. **A escala das 6h30 cai exatamente nesse caso.**
+Sem template, o envio falha com o erro 63016.
+
+Passo a passo:
+
+1. Crie os templates em **Messaging → Content Template Builder** e envie para aprovação.
+   As lacunas são posicionais e o sistema preenche nesta ordem:
+   `{{1}}` nome · `{{2}}` data · `{{3}}` lista de colheitas · `{{4}}` link do app
+2. Preencha os `TWILIO_CONTENT_SID_*` no `.env` da API.
+3. Teste no **sandbox** primeiro (`+14155238886`). Cada pessoa precisa mandar
+   `join <código>` para o sandbox antes de conseguir receber.
+4. Só então desligue `NOTIFICATIONS_DRY_RUN`.
+
+Sem Content SID configurado, o adaptador envia texto livre — o que funciona no sandbox e
+dentro da janela de 24h, mas não serve para o disparo da manhã em produção.
 
 O modo `console` existe para exercitar o fluxo inteiro antes de decidir o provedor: a
 coordenação lê os textos reais na tela de Notificações e aprova. Quando decidir, o

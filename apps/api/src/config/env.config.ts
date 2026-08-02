@@ -27,9 +27,27 @@ const envSchema = z.object({
     .default('false')
     .transform((v) => v === 'true' || v === '1'),
 
-  NOTIFICATIONS_DRIVER: z.enum(['console', 'webhook']).default('console'),
+  NOTIFICATIONS_DRIVER: z.enum(['console', 'webhook', 'twilio']).default('console'),
   NOTIFICATIONS_WEBHOOK_URL: z.string().optional(),
   NOTIFICATIONS_WEBHOOK_TOKEN: z.string().optional(),
+
+  // Twilio — Console > Account Info
+  TWILIO_ACCOUNT_SID: z.string().optional(),
+  TWILIO_AUTH_TOKEN: z.string().optional(),
+  /** Remetente WhatsApp em E.164, sem o prefixo `whatsapp:`. */
+  TWILIO_WHATSAPP_FROM: z.string().optional(),
+  /** Alternativa ao FROM, quando se usa um Messaging Service. */
+  TWILIO_MESSAGING_SERVICE_SID: z.string().optional(),
+  /**
+   * Content SIDs dos templates aprovados pela Meta, por tipo de mensagem.
+   * Sem eles, só dá para responder dentro da janela de 24h.
+   */
+  TWILIO_CONTENT_SID_ESCALA: z.string().optional(),
+  TWILIO_CONTENT_SID_COBRANCA: z.string().optional(),
+  TWILIO_CONTENT_SID_COBERTURA: z.string().optional(),
+  TWILIO_CONTENT_SID_RESUMO: z.string().optional(),
+  /** URL que o Twilio chama com o status de entrega (opcional). */
+  TWILIO_STATUS_CALLBACK_URL: z.string().optional(),
   NOTIFICATIONS_DRY_RUN: z
     .string()
     .default('true')
@@ -57,6 +75,22 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
       'NOTIFICATIONS_DRIVER=webhook exige NOTIFICATIONS_WEBHOOK_URL. ' +
         'Aponte para o seu gateway de WhatsApp (Evolution API, n8n, etc.).',
     );
+  }
+
+  if (env.NOTIFICATIONS_DRIVER === 'twilio') {
+    const faltando: string[] = [];
+    if (!env.TWILIO_ACCOUNT_SID) faltando.push('TWILIO_ACCOUNT_SID');
+    if (!env.TWILIO_AUTH_TOKEN) faltando.push('TWILIO_AUTH_TOKEN');
+    if (!env.TWILIO_WHATSAPP_FROM && !env.TWILIO_MESSAGING_SERVICE_SID) {
+      faltando.push('TWILIO_WHATSAPP_FROM (ou TWILIO_MESSAGING_SERVICE_SID)');
+    }
+
+    if (faltando.length) {
+      throw new Error(
+        `NOTIFICATIONS_DRIVER=twilio exige: ${faltando.join(', ')}.\n` +
+          '  SID e token em Console > Account Info; o remetente em Messaging > Senders.',
+      );
+    }
   }
 
   return {
