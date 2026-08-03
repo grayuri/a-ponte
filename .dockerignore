@@ -1,0 +1,22 @@
+# O build da API roda a partir da raiz do monorepo, então o `COPY . .` do
+# apps/api/Dockerfile leva tudo que estiver aqui. Sem esta lista, uma build
+# local mandaria o node_modules da máquina para dentro da imagem — e ele
+# sobrescreveria o que o `npm ci` instalou no Alpine.
+node_modules
+**/node_modules
+
+.git
+.gitignore
+
+# Artefatos de build: são regerados dentro da imagem.
+dist
+**/dist
+.next
+**/.next
+
+# Segredos e ruído local.
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
