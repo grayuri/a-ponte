@@ -18,8 +18,10 @@ RUN npm ci --workspaces --include-workspace-root || npm install
 
 # ---------------------------------------------------------------------- build
 FROM base AS build
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/packages/contracts/node_modules ./packages/contracts/node_modules
+# Leva a árvore inteira instalada pelo deps: o npm hoista quase tudo para a
+# raiz, mas quando ele resolve um conflito criando node_modules dentro de um
+# workspace, copiar só a raiz deixaria a dependência para trás.
+COPY --from=deps /app/ ./
 COPY . .
 RUN npm run build --workspace @a-ponte/contracts
 RUN npx prisma generate --schema apps/api/prisma/schema.prisma
