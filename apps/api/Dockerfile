@@ -6,7 +6,11 @@
 
 FROM node:22-alpine AS base
 WORKDIR /app
-RUN apk add --no-cache libc6-compat
+# O `openssl` nao e enfeite: sem ele o Prisma nao consegue detectar a versao
+# da libssl, assume openssl-1.1.x e baixa um engine que procura uma
+# libssl.so.1.1 que o Alpine 3.21 nao tem mais — o `migrate deploy` morre na
+# subida com "Could not parse schema engine response".
+RUN apk add --no-cache libc6-compat openssl
 
 # ---------------------------------------------------------------- dependências
 FROM base AS deps

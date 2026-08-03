@@ -12,6 +12,11 @@
 
 generator client {
   provider = "prisma-client-js"
+  // "native" cobre a maquina de quem desenvolve; o alvo musl e para o
+  // container Alpine do deploy. Declarar em vez de deixar o Prisma adivinhar,
+  // porque a deteccao automatica erra dentro do Alpine e escolhe um engine
+  // ligado a uma libssl que a imagem nao tem.
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
